@@ -235,6 +235,8 @@ def main(argv=None):
     parser.add_argument("--group-by", default="campaign", choices=GROUP_FIELDS, help="聚合维度，默认 campaign")
     parser.add_argument("--compare", default=None, help="上期同结构明细，用于环比对照")
     parser.add_argument("--out-md", default=None, help="输出 Markdown 复盘表")
+    parser.add_argument("--out", default=None, help="输出分组复盘 CSV")
+    parser.add_argument("--out-xlsx", default=None, help="输出 Excel 工作簿（分组复盘 + 核心指标 + 环比变化）")
     parser.add_argument("--out-json", default=None, help="输出结果 JSON")
     parser.add_argument("--gross-margin", type=float, default=None,
                         help="缺少成本列时使用的毛利率（不含广告费），例如 0.35")
@@ -243,7 +245,7 @@ def main(argv=None):
     parser.add_argument("--top", type=int, default=15, help="Markdown 表中列出的分组数，默认 15")
     parser.add_argument("--currency", default=None, help="报告币种标注")
     parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段")
-    parser.add_argument("--sheet", type=int, default=1, help="xlsx 工作表序号")
+    parser.add_argument("--sheet", default=1, help="xlsx 工作表序号或名称，默认第 1 个")
     parser.add_argument("--header-row", type=int, default=1, help="表头行号")
     args = parser.parse_args(argv)
 
@@ -386,6 +388,33 @@ def main(argv=None):
     if args.out_md:
         with open(args.out_md, "w", encoding="utf-8") as handle:
             handle.write(markdown)
+
+    group_headers = ["分组", "数据行数", "曝光", "点击", "CTR", "CVR", "CPC", "CPA", "花费", "订单",
+                     "件数", "广告收入", "退款", "商品成本", "毛利", "毛利率", "净利", "ROAS",
+                     "ACOS", "TACOS", "保本ROAS"]
+    group_rows = [[bucket["key"], bucket["rows"], round(bucket["impressions"], 2),
+                   round(bucket["clicks"], 2), bucket["ctr"], bucket["cvr"], bucket["cpc"],
+                   bucket["cpa"], round(bucket["spend"], 2), round(bucket["orders"], 2),
+                   round(bucket["units"], 2), round(bucket["revenue"], 2),
+                   round(bucket["refund"], 2), round(bucket["cost_total"], 2),
+                   round(bucket["gross_profit"], 2), bucket["gross_margin"],
+                   round(bucket["net_profit"], 2), bucket["roas"], bucket["acos"],
+                   bucket["tacos"], bucket["breakeven_roas"]]
+                  for bucket in ordered]
+    if args.out:
+        sheetio.write_csv(args.out, group_headers, group_rows)
+    if args.out_xlsx:
+        sheetio.write_xlsx(args.out_xlsx, [
+            {"name": "分组复盘", "headers": group_headers, "rows": group_rows},
+            {"name": "核心指标", "headers": ["指标", "数值"],
+             "rows": [[key, value] for key, value in export["totals"].items()]
+             + [["保本 ROAS", export["breakeven_roas"] or "未提供成本数据"],
+                ["聚合维度", export["group_by"] or "整体"],
+                ["数据区间", f"{export['period']['start']} ~ {export['period']['end']}"]]},
+            {"name": "环比变化", "headers": ["级别", "类型", "说明", "建议动作"],
+             "rows": [[item["level"], item["type"], item["detail"], item["action"]]
+                      for item in changes]},
+        ])
 
     status = "ok"
     if any(flag["level"] == "high" for flag in flags):

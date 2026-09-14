@@ -1,0 +1,4 @@
+interface:
+  display_name: "跨境电商选品利润测算"
+  short_description: "多站点多币种逐行测算净利，反算保本价与目标售价，标记亏损组合"
+  default_prompt: "Use $ecom-selection-profit to model per-site profit, breakeven price and target price for candidate SKUs."

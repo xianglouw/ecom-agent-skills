@@ -1,0 +1,4 @@
+interface:
+  display_name: "跨境电商广告素材生产"
+  short_description: "分镜、文生视频提示词、前三秒留存检查与任意语种本地化语速预算"
+  default_prompt: "Use $ecom-video-creative to produce ad storyboards, generation prompts and first-3-second retention checks."

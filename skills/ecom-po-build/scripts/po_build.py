@@ -86,7 +86,8 @@ def main(argv=None):
     parser.add_argument("input", help="需求或报价表：.csv/.xlsx")
     parser.add_argument("--supplier", required=True, help="供应商名称")
     parser.add_argument("--currency", default=None, help="采购币种，如 USD；表内有币种列时以表内为准")
-    parser.add_argument("--out", required=True, help="输出 PO 单 CSV")
+    parser.add_argument("--out", default=None, help="输出 PO 单 CSV")
+    parser.add_argument("--out-xlsx", default=None, help="输出 Excel 工作簿（PO 明细 + 订单信息 + 隔离行）")
     parser.add_argument("--out-json", default=None, help="输出校验报告 JSON")
     parser.add_argument("--po-no", default=None, help="PO 号；不填则按日期自动生成")
     parser.add_argument("--order-date", default=None, help="下单日期，默认今天")
@@ -98,8 +99,12 @@ def main(argv=None):
     parser.add_argument("--trade-term", default="", help="贸易条款，如 FOB / DDP")
     parser.add_argument("--payment-term", default="", help="付款条件，如 T/T 30%%+70%%")
     parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段")
-    parser.add_argument("--sheet", type=int, default=1, help="xlsx 工作表序号")
+    parser.add_argument("--sheet", default=1, help="xlsx 工作表序号或名称，默认第 1 个")
     args = parser.parse_args(argv)
+
+    if not args.out and not args.out_xlsx:
+        sys.stderr.write("请至少指定 --out（CSV）或 --out-xlsx（Excel）之一\n")
+        return 2
 
     order_date = to_date(args.order_date) or datetime.date.today().strftime("%Y-%m-%d")
     arrive_by = to_date(args.arrive_by)
@@ -210,7 +215,24 @@ def main(argv=None):
     export_headers = ["po_no", "supplier", "currency", "line_no", "sku", "product_name", "spec", "qty",
                       "unit", "unit_price", "amount", "moq", "lead_time_days", "etd",
                       "trade_term", "payment_term", "remark"]
-    sheetio.write_csv(args.out, export_headers, po_rows)
+    if args.out:
+        sheetio.write_csv(args.out, export_headers, po_rows)
+    if args.out_xlsx:
+        isolated_headers = ["原表行号", "SKU", "商品", "数量", "单价", "_隔离原因"]
+        isolated_rows = [[line["row"], line["sku"], line["product_name"], line["qty"],
+                          line["unit_price"], reason] for line, reason in isolated]
+        sheetio.write_xlsx(args.out_xlsx, [
+            {"name": "PO明细", "headers": export_headers, "rows": po_rows},
+            {"name": "订单信息", "headers": ["项目", "内容"],
+             "rows": [["PO 号", po_no], ["供应商", args.supplier], ["币种", currency],
+                      ["下单日期", order_date], ["预计到货", arrive_by],
+                      ["贸易条款", args.trade_term], ["付款条款", args.payment_term],
+                      ["行数", len(lines)], ["总数量", round(total_qty, 2)],
+                      ["总金额", round(total_amount, 2)],
+                      ["金额不符行", len(amount_mismatch)], ["低于 MOQ 行", len(below_moq)],
+                      ["隔离行", len(isolated)], ["数据来源", os.path.basename(args.input)]]},
+            {"name": "隔离行", "headers": isolated_headers, "rows": isolated_rows},
+        ])
 
     report = {
         "po_no": po_no,

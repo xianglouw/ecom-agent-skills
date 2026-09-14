@@ -1,4 +1,4 @@
 interface:
-  display_name: "跨境电商运营工作流"
-  short_description: "跨境电商六阶段工作流：规则检索、表格清洗、选品测算、多模态素材与投流、PO 单与 ROI 复盘"
-  default_prompt: "Use $crossborder-ecom-ops to run this cross-border e-commerce ops task end to end."
+  display_name: "跨境电商运营工作流总控"
+  short_description: "七阶段路由与人机协作编排，统一输出契约与 Prompt 工程方法"
+  default_prompt: "Use $crossborder-ecom-ops to orchestrate the end-to-end cross-border e-commerce ops workflow."

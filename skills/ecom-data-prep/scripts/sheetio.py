@@ -261,18 +261,26 @@ def _sheet_paths(archive):
             target = target[1:]
         elif not target.startswith("xl/"):
             target = "xl/" + target
-        paths.append(target)
+        paths.append((sheet.get("name") or "", target))
     return paths or fallback
 
 
 def _read_xlsx(path, sheet=1):
     with zipfile.ZipFile(path) as archive:
-        names = _sheet_paths(archive)
-        if not names:
+        sheets = _sheet_paths(archive)
+        if not sheets:
             raise ValueError(f"xlsx 中没有工作表：{path}")
-        index = min(max(sheet, 1), len(names)) - 1
+        wanted = clean_text(sheet)
+        if wanted and not wanted.isdigit():          # 按工作表名找，找不到就退回第一个
+            matched = [item for item in sheets if item[0] == wanted] or \
+                      [item for item in sheets if item[0].lower() == wanted.lower()]
+            if not matched:
+                raise ValueError(f"找不到工作表「{wanted}」，现有：{'、'.join(name for name, _ in sheets)}")
+            target = matched[0][1]
+        else:
+            target = sheets[min(max(int(wanted or 1), 1), len(sheets)) - 1][1]
         shared = _shared_strings(archive)
-        root = ET.fromstring(archive.read(names[index]))
+        root = ET.fromstring(archive.read(target))
     rows = []
     for row in root.iter(f"{XLSX_NS}row"):
         cells = {}
@@ -307,7 +315,7 @@ def _rectangular(rows):
 
 
 def read_table(path, sheet=1, header_row=1):
-    """读表，返回 (headers, rows)。header_row 为 1 基行号。"""
+    """读表，返回 (headers, rows)。header_row 为 1 基行号；xlsx 的 sheet 可给序号或工作表名。"""
     if not os.path.exists(path):
         raise FileNotFoundError(f"找不到文件：{path}")
     extension = os.path.splitext(path)[1].lower()
@@ -341,6 +349,204 @@ def write_csv(path, headers, rows):
 def write_json(path, payload):
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------- Excel 写出
+
+_XLSX_BAD_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
+_XLSX_STYLES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
+<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="3">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>"""
+
+
+def _xml_text(value):
+    return (str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("'", "&apos;"))
+
+
+def _col_letter(index):
+    """1 → A，27 → AA。"""
+    letters = ""
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
+def _display_width(value):
+    """估算单元格显示宽度：中日韩等全角字符按 2 个字符宽计。"""
+    width = 0
+    for char in str(value):
+        width += 2 if ord(char) > 0x2E7F else 1
+    return width
+
+
+def _numeric_text(value):
+    """判断字符串是不是可以安全写成数字的纯数值。
+
+    只认无千分位、无币种符号、无前导零的短数值：`1234.50`、`-3.2`、`0.15`、`120000` 可以；
+    `007`（货号/工号）、`20260914000001`（超长条码与订单号，转 float 会丢精度）、`1,234` 一律不转。
+    """
+    text = str(value).strip()
+    if not text or len(re.sub(r"\D", "", text)) > 12:
+        return None
+    if not re.fullmatch(r"-?(?:0|[1-9]\d*)(?:\.\d+)?", text):
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _xlsx_cell(reference, value, coerce_numbers=False):
+    """写单元格：数字按数字写（Excel 可直接求和），文本用内联字符串，空值留空。
+
+    coerce_numbers 打开时，形如 `1234.50` 的纯数值文本也会写成数字，
+    便于清洗类产物在 Excel 里直接求和与做透视；`007`、超长条码不受影响。
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, bool):
+        return f'<c r="{reference}" t="b"><v>{1 if value else 0}</v></c>'
+    if isinstance(value, (int, float)):
+        return f'<c r="{reference}"><v>{value!r}</v></c>'
+    if coerce_numbers:
+        number = _numeric_text(value)
+        if number is not None:
+            return f'<c r="{reference}"><v>{number!r}</v></c>'
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        value = value.isoformat()
+    text = _xml_text(value)
+    style = ' s="2"' if len(str(value)) > 28 else ""
+    return f'<c r="{reference}"{style} t="inlineStr"><is><t xml:space="preserve">{text}</t></is></c>'
+
+
+def _xlsx_sheet_xml(headers, rows, widths, coerce_numbers=False):
+    parts = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+             '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">']
+    parts.append('<sheetViews><sheetView workbookViewId="0">'
+                 '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
+                 '</sheetView></sheetViews>')
+    parts.append('<sheetFormatPr defaultRowHeight="15"/>')
+    if widths:
+        cols = "".join(f'<col min="{index}" max="{index}" width="{width:g}" customWidth="1"/>'
+                       for index, width in enumerate(widths, start=1))
+        parts.append(f"<cols>{cols}</cols>")
+    parts.append("<sheetData>")
+    if headers:
+        cells = "".join(f'<c r="{_col_letter(col)}1" s="1" t="inlineStr">'
+                        f'<is><t xml:space="preserve">{_xml_text(header)}</t></is></c>'
+                        for col, header in enumerate(headers, start=1))
+        parts.append(f'<row r="1" s="1" customFormat="1">{cells}</row>')
+    for offset, row in enumerate(rows, start=2):
+        cells = "".join(_xlsx_cell(f"{_col_letter(col)}{offset}", value, coerce_numbers)
+                        for col, value in enumerate(row, start=1))
+        parts.append(f'<row r="{offset}">{cells}</row>' if cells else f'<row r="{offset}"/>')
+    parts.append("</sheetData></worksheet>")
+    return "".join(parts)
+
+
+def _xlsx_widths(headers, rows, sample=200):
+    if not headers:
+        return []
+    widths = []
+    for index, header in enumerate(headers):
+        longest = _display_width(header)
+        for row in rows[:sample]:
+            if index < len(row) and row[index] not in (None, ""):
+                longest = max(longest, _display_width(row[index]))
+        widths.append(min(max(longest + 2, 6), 52))
+    return widths
+
+
+def write_xlsx(path, sheets):
+    """写出 .xlsx 工作簿；xlsx 本质是一个装着 XML 的 zip，只用标准库即可生成。
+
+    sheets: [{"name": 表名, "headers": [...], "rows": [[...], ...],
+              "coerce_numbers": False}, ...]
+    数字按数字写（Excel 里能直接求和、做透视），文本走内联字符串，表头加粗并冻结首行，
+    列宽按内容自适应，长文本单元格自动换行。表级 coerce_numbers 打开时，纯数值文本
+    也按数字写。不需要 pandas / openpyxl。
+    """
+    prepared = []
+    for sheet in sheets:
+        if not sheet:
+            continue
+        headers = ["" if header is None else header for header in sheet.get("headers") or []]
+        rows = [list(row) for row in sheet.get("rows") or []]
+        if not headers and not rows:
+            continue
+        prepared.append({"name": sheet.get("name") or f"Sheet{len(prepared) + 1}",
+                         "headers": headers, "rows": rows,
+                         "coerce": bool(sheet.get("coerce_numbers"))})
+    if not prepared:
+        raise ValueError("write_xlsx 至少需要一张有内容的工作表")
+
+    names = []
+    for sheet in prepared:
+        name = _XLSX_BAD_SHEET_CHARS.sub("", str(sheet["name"]).strip())[:31] or "Sheet"
+        candidate, suffix = name, 2
+        while candidate in names:
+            candidate = f"{name[:28]}_{suffix}"
+            suffix += 1
+        names.append(candidate)
+
+    overrides = "".join(
+        f'<Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        for index in range(1, len(prepared) + 1))
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+        f"{overrides}</Types>")
+    root_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        "</Relationships>")
+    sheet_tags = "".join(
+        f'<sheet name="{_xml_text(name)}" sheetId="{index}" r:id="rId{index}"/>'
+        for index, name in enumerate(names, start=1))
+    workbook = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f"<sheets>{sheet_tags}</sheets></workbook>")
+    sheet_rels = "".join(
+        f'<Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{index}.xml"/>'
+        for index in range(1, len(prepared) + 1))
+    style_rel_id = len(prepared) + 1
+    workbook_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        f"{sheet_rels}"
+        f'<Relationship Id="rId{style_rel_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        "</Relationships>")
+
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", root_rels)
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        archive.writestr("xl/styles.xml", _XLSX_STYLES)
+        for index, sheet in enumerate(prepared, start=1):
+            archive.writestr(f"xl/worksheets/sheet{index}.xml",
+                             _xlsx_sheet_xml(sheet["headers"], sheet["rows"],
+                                             _xlsx_widths(sheet["headers"], sheet["rows"]),
+                                             sheet["coerce"]))
 
 
 # ---------------------------------------------------------------- 字段别名

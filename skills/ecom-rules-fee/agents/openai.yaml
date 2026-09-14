@@ -1,0 +1,4 @@
+interface:
+  display_name: "跨境电商规则与费率核算"
+  short_description: "多平台合规费率检索与对照表搭建，逐单核算费用、净利与扣费风险"
+  default_prompt: "Use $ecom-rules-fee to research platform rules and fees, then check per-order charges and margins."

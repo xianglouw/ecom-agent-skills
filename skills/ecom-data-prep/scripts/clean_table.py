@@ -76,15 +76,16 @@ def main(argv=None):
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("input", help="输入表格：.csv/.tsv/.xlsx")
-    parser.add_argument("--out", required=True, help="输出清洗后的 CSV（UTF-8 BOM）")
+    parser.add_argument("--out", default=None, help="输出清洗后的 CSV（UTF-8 BOM）")
     parser.add_argument("--out-json", default=None, help="输出清洗报告 JSON")
     parser.add_argument("--quarantine", default=None, help="输出被隔离的问题行 CSV")
+    parser.add_argument("--out-xlsx", default=None, help="输出 Excel 工作簿（清洗结果 + 隔离行 + 字段覆盖率）")
     parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段",
                         help="显式指定列名映射，可重复")
     parser.add_argument("--require", default="", help="必填字段，逗号分隔，例如 sku,price")
     parser.add_argument("--dedupe-on", default="", help="去重主键字段，逗号分隔，默认 sku,date（不存在则用全列）")
     parser.add_argument("--keep", default="", help="只保留这些字段，逗号分隔；默认保留全部")
-    parser.add_argument("--sheet", type=int, default=1, help="xlsx 工作表序号，默认第 1 个")
+    parser.add_argument("--sheet", default=1, help="xlsx 工作表序号或名称，默认第 1 个")
     parser.add_argument("--header-row", type=int, default=1, help="表头所在行号，默认 1")
     parser.add_argument("--keep-empty-rows", action="store_true", help="保留全空行（默认剔除）")
     args = parser.parse_args(argv)
@@ -176,15 +177,21 @@ def main(argv=None):
         flags.append(sheetio.flag("low", "duplicates_removed",
                                   f"按主键 {dedupe_fields or '全列'} 删除 {len(duplicates)} 行重复"))
 
+    if not args.out and not args.out_xlsx:
+        sys.stderr.write("请至少指定 --out（CSV）或 --out-xlsx（Excel）之一\n")
+        return 2
+
     keep = [item.strip() for item in args.keep.split(",") if item.strip()]
     export_headers = [field for field in new_headers if not keep or field in keep]
-    sheetio.write_csv(args.out, export_headers, [[values.get(field) or "" for field in export_headers] for _, values in clean_rows])
+    export_rows = [[values.get(field) or "" for field in export_headers] for _, values in clean_rows]
+    quarantine_headers = list(export_headers) + ["_隔离原因", "_原行号"]
+    quarantine_rows = [[values.get(field) or "" for field in export_headers] + [reason, offset]
+                       for offset, values, reason in quarantined]
+    if args.out:
+        sheetio.write_csv(args.out, export_headers, export_rows)
 
     if args.quarantine:
-        quarantine_headers = list(export_headers) + ["_隔离原因", "_原行号"]
-        sheetio.write_csv(args.quarantine, quarantine_headers,
-                          [[values.get(field) or "" for field in export_headers] + [reason, offset]
-                           for offset, values, reason in quarantined])
+        sheetio.write_csv(args.quarantine, quarantine_headers, quarantine_rows)
 
     coverage = {
         field: round(100.0 * sum(1 for _, values in clean_rows if clean_text(values.get(field) or "")) / len(clean_rows), 1)
@@ -216,6 +223,22 @@ def main(argv=None):
 
     status = "blocked" if missing_required_columns else ("partial" if quarantined else "ok")
     confidence = 0.9 if not quarantined and not missing_required_columns else 0.6
+    if args.out_xlsx:
+        sheetio.write_xlsx(args.out_xlsx, [
+            {"name": "清洗结果", "headers": export_headers, "rows": export_rows,
+             "coerce_numbers": True},
+            {"name": "隔离行", "headers": quarantine_headers, "rows": quarantine_rows,
+             "coerce_numbers": True},
+            {"name": "字段覆盖率", "headers": ["字段", "有值占比%"],
+             "rows": [[field, pct] for field, pct in coverage.items()]},
+            {"name": "清洗台账", "headers": ["项目", "数值"],
+             "rows": [["读入行数", report["rows_in"]], ["输出行数", report["rows_out"]],
+                      ["丢弃空行", report["empty_rows_dropped"]], ["删除重复行", report["duplicates_removed"]],
+                      ["隔离行数", report["quarantined"]], ["去重主键", "、".join(dedupe_fields) or "全列"],
+                      ["必填字段", "、".join(required) or "无"],
+                      ["列名归一", "；".join(f"{k}→{v}" for k, v in renamed.items()) or "无需归一"]]},
+        ])
+
     envelope = sheetio.make_envelope("clean_table", status, confidence, report, flags,
                                      sources=[{"ref": os.path.basename(args.input), "as_of": sheetio.to_date(
                                          __import__("datetime").datetime.now())}],

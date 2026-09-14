@@ -1,0 +1,4 @@
+interface:
+  display_name: "跨境电商表格数据整理"
+  short_description: "多来源表头归一、清洗去重、口径统一，产出可分析的干净表与 Excel 工作簿"
+  default_prompt: "Use $ecom-data-prep to clean, normalize and merge messy cross-border operations spreadsheets."

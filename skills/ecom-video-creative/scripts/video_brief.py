@@ -866,8 +866,10 @@ def main(argv=None):
     parser.add_argument("--out-json", default=None, help="输出结果信封 JSON")
     parser.add_argument("--out-md", default=None, help="输出 Markdown brief")
     parser.add_argument("--quarantine", default=None, help="输出未适配/未通过检查的素材清单 CSV")
+    parser.add_argument("--out-xlsx", default=None,
+                        help="输出 Excel 工作簿（素材总表 + 分镜 + 语速预算 + 问题清单）")
     parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段")
-    parser.add_argument("--sheet", type=int, default=1, help="xlsx 工作表序号")
+    parser.add_argument("--sheet", default=1, help="xlsx 工作表序号或名称，默认第 1 个")
     parser.add_argument("--header-row", type=int, default=1, help="产品表表头行号")
     parser.add_argument("--styles-header-row", type=int, default=1, help="风格库表头行号")
     parser.add_argument("--hooks-header-row", type=int, default=1, help="钩子库表头行号")
@@ -928,6 +930,7 @@ def main(argv=None):
 
     rows_out, assets, uncovered_sites = [], [], set()
     issue_index = {}
+    product_names = {}
     product_count = 0
     for row_ordinal, raw in enumerate(body):
         def cell(field, row=raw, cols=columns):
@@ -950,6 +953,7 @@ def main(argv=None):
             "currency": clean_text(cell("currency")), "language": clean_text(cell("language")),
         }
         product_count += 1
+        product_names[sku] = product["product_name"]
         style = styles.get(site, {})
         if not style:
             uncovered_sites.add(site)
@@ -995,16 +999,15 @@ def main(argv=None):
         flags.append(sheetio.flag(level, key, f"{len(hits)} 条素材：{description}——{preview}",
                                   "按 references/video-production.md 的检查项修正后重跑"))
 
+    quarantine_headers = ["asset_name", "site", "language", "localize_to", "_问题", "placeholders"]
+    quarantine_rows = [[asset["asset_name"], asset["site"], asset["language"], asset["localize_to"],
+                        "；".join(f"{key}:{detail}" if detail else key for key, detail in asset["issues"]),
+                        asset["placeholders"]]
+                       for asset in assets if asset["issues"]]
     if args.out:
         sheetio.write_csv(args.out, EXPORT_HEADERS, rows_out)
     if args.quarantine:
-        quarantine_rows = [[asset["asset_name"], asset["site"], asset["language"],
-                            "；".join(f"{key}:{detail}" if detail else key for key, detail in asset["issues"]),
-                            asset["placeholders"]]
-                           for asset in assets if asset["issues"]]
-        sheetio.write_csv(args.quarantine,
-                          ["asset_name", "site", "language", "_问题", "placeholders"], quarantine_rows)
-
+        sheetio.write_csv(args.quarantine, quarantine_headers, quarantine_rows)
     high_level = [flag for flag in flags if flag["level"] == "high"]
     retention_fail = sum(1 for asset in assets if asset["retention_blocking"])
     pending_assets = sum(1 for asset in assets if asset["placeholders"])
@@ -1033,6 +1036,33 @@ def main(argv=None):
     if args.out_md:
         with open(args.out_md, "w", encoding="utf-8") as handle:
             handle.write(build_markdown(data, args, args.top))
+
+    if args.out_xlsx:
+        asset_headers = ["素材名", "SKU", "商品", "站点", "目标语种", "语种说明", "钩子",
+                         "比例", "时长s", "前3秒判定", "口播预算", "待填数"]
+        asset_rows = [[asset["asset_name"], asset["sku"],
+                       product_names.get(asset["sku"], ""), asset["site"],
+                       asset["language"], asset["language_label"],
+                       f"{asset['hook_code']} {asset['hook_name']}", asset["ratio"],
+                       args.duration,
+                       "通过" if not asset["retention_blocking"] else "未通过",
+                       asset["speech_budget"], asset["placeholders"]]
+                      for asset in assets]
+        speech_headers = ["站点", "目标语种", "语种说明", "素材数", "前3秒口播预算", "预算口径"]
+        speech_rows = []
+        for entry in data["speech_rates"]:
+            count = sum(1 for asset in assets if asset["site"] == entry["site"]
+                        and asset["language"] == entry["language"])
+            speech_rows.append([entry["site"], entry["language"],
+                                language_label(entry["language"]) if entry["language"] else "待确认",
+                                count, entry["budget"],
+                                "暂按工作语言预检" if entry.get("provisional") else "目标语种"])
+        sheetio.write_xlsx(args.out_xlsx, [
+            {"name": "素材总表", "headers": asset_headers, "rows": asset_rows},
+            {"name": "分镜", "headers": EXPORT_HEADERS, "rows": rows_out},
+            {"name": "语速预算", "headers": speech_headers, "rows": speech_rows},
+            {"name": "问题清单", "headers": quarantine_headers, "rows": quarantine_rows},
+        ])
 
     status = "ok"
     if high_level:

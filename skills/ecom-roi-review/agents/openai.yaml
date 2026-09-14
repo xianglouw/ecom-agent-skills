@@ -1,0 +1,4 @@
+interface:
+  display_name: "跨境电商 ROI 数据复盘"
+  short_description: "ROAS/ACOS/TACOS 核算、分组环比、异常归因与复盘周报"
+  default_prompt: "Use $ecom-roi-review to compute ROAS/ACOS, compare periods and write the weekly review."

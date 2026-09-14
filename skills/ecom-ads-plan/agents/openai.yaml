@@ -1,0 +1,4 @@
+interface:
+  display_name: "跨境电商广告投放方案"
+  short_description: "投放结构、出价预算、保本 ROAS、放量节奏与止损判优规则"
+  default_prompt: "Use $ecom-ads-plan to design ad structure, bids, budgets and stop-loss rules."

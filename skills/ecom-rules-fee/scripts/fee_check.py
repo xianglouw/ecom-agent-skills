@@ -105,6 +105,19 @@ def describe_rates(rates):
     return summary
 
 
+def rate_summary_sheet(summary):
+    """费率表覆盖情况，做成一张可读的工作表。"""
+    rows = [["平台/站点", "规则行数", "类目数", "类目示例"]]
+    for key, value in sorted(summary.get("platform_site_groups", {}).items()):
+        rows.append([key, value.get("rows", 0), value.get("category_count", 0),
+                     "、".join(value.get("categories", []))])
+    rows.append([])
+    rows.append(["缺少生效日期的费率行", summary.get("without_effective_date", 0), "", ""])
+    zero = summary.get("rate_columns_all_zero", [])
+    rows.append(["整列为 0 的费率字段", "、".join(zero) if zero else "无", "", ""])
+    return {"name": "费率覆盖情况", "headers": rows[0], "rows": rows[1:]}
+
+
 def match_rule(order, rates):
     """返回 (最佳匹配规则, 匹配说明)。优先级：站点精确 > 站点通配；类目精确 > 类目模糊 > 通配。"""
     platform_key = norm_key(order["platform"])
@@ -262,6 +275,7 @@ def main(argv=None):
     parser.add_argument("--summary", action="store_true", help="只输出费率表覆盖情况，不核算订单")
     parser.add_argument("--out-json", default=None, help="输出结果 JSON")
     parser.add_argument("--out", default=None, help="输出明细 CSV")
+    parser.add_argument("--out-xlsx", default=None, help="输出 Excel 工作簿（明细 + 总计 + 未匹配订单 + 费率覆盖）")
     parser.add_argument("--fx", action="append", default=[], metavar="币种:汇率",
                         help="1 单位该币种等于多少目标币种，例如 USD:7.20，可重复")
     parser.add_argument("--target-currency", default=None,
@@ -270,7 +284,7 @@ def main(argv=None):
     parser.add_argument("--low-margin", type=float, default=0.05, help="毛利率低于该值标记提醒，默认 0.05")
     parser.add_argument("--default-qty", type=float, default=1.0, help="订单表没有数量列时的默认数量")
     parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段")
-    parser.add_argument("--sheet", type=int, default=1, help="xlsx 工作表序号")
+    parser.add_argument("--sheet", default=1, help="xlsx 工作表序号或名称，默认第 1 个")
     args = parser.parse_args(argv)
 
     fx = {}
@@ -302,6 +316,8 @@ def main(argv=None):
             flags.append(sheetio.flag("medium", "rate_missing_date",
                                       f"{summary['without_effective_date']} 行费率缺少生效日期",
                                       "补齐生效日期，否则无法判断是否已被平台调整"))
+        if args.out_xlsx:
+            sheetio.write_xlsx(args.out_xlsx, [rate_summary_sheet(summary)])
         envelope = sheetio.make_envelope("fee_check", "ok", 0.85, {"summary": summary}, flags)
         sheetio.emit(envelope, out_json=args.out_json)
         return 0
@@ -373,12 +389,12 @@ def main(argv=None):
     data = {"summary": summary, "totals": totals, "orders": results,
             "unmatched_rows": unmatched[:50], "fx_used": fx, "target_currency": args.target_currency}
 
-    if args.out:
-        export_headers = ["row", "sku", "platform", "site", "category", "price", "qty", "currency",
-                          "commission", "payment_fee", "tax", "fulfillment_fee", "fba_fee", "storage_fee",
-                          "fees_total", "cost_total", "revenue", "profit", "margin", "breakeven_roas",
-                          "match_note", "rule_source", "rule_effective_date", "rule_file"]
-        rows = []
+    export_headers = ["row", "sku", "platform", "site", "category", "price", "qty", "currency",
+                      "commission", "payment_fee", "tax", "fulfillment_fee", "fba_fee", "storage_fee",
+                      "fees_total", "cost_total", "revenue", "profit", "margin", "breakeven_roas",
+                      "match_note", "rule_source", "rule_effective_date", "rule_file"]
+    rows = []
+    if args.out or args.out_xlsx:
         for item in results:
             rule = item["matched_rule"] or {}
             rows.append([item.get("row"), item["sku"], item["platform"], item["site"], item["category"],
@@ -388,7 +404,20 @@ def main(argv=None):
                          item.get("cost_total"), item.get("revenue"), item.get("profit"),
                          item.get("margin"), item.get("breakeven_roas"), item["match_note"],
                          rule.get("source", ""), rule.get("effective_date", ""), rule.get("file", "")])
+    if args.out:
         sheetio.write_csv(args.out, export_headers, rows)
+    if args.out_xlsx:
+        sheetio.write_xlsx(args.out_xlsx, [
+            {"name": "费用明细", "headers": export_headers, "rows": rows},
+            {"name": "核算总计", "headers": ["指标", "数值"],
+             "rows": [["订单行数", totals["orders"]], ["收入合计", totals["revenue"]],
+                      ["费用合计", totals["fees"]], ["成本合计", totals["cost"]],
+                      ["利润合计", totals["profit"]], ["毛利率", totals.get("margin", "")],
+                      ["未匹配规则的订单数", totals["unmatched_orders"]]]},
+            {"name": "未匹配订单", "headers": ["表内行号", "说明"],
+             "rows": [[index, "未匹配到费率规则，费用无法核算"] for index in unmatched]},
+            rate_summary_sheet(summary),
+        ])
 
     if unmatched:
         flags.append(sheetio.flag("high", "rule_coverage_gap",

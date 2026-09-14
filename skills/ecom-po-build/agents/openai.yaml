@@ -1,0 +1,4 @@
+interface:
+  display_name: "跨境电商 PO 单制作"
+  short_description: "采购订单生成与下单前校验：金额、MOQ、单位、币种、交期与审批阈值"
+  default_prompt: "Use $ecom-po-build to generate purchase orders and validate them before ordering."

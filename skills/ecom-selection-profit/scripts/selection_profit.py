@@ -296,8 +296,10 @@ def main(argv=None):
     parser.add_argument("--out-json", default=None, help="输出结果信封 JSON")
     parser.add_argument("--out-md", default=None, help="输出 Markdown 测算表（按站点分节，可直接阅读）")
     parser.add_argument("--quarantine", default=None, help="输出未能测算的行 CSV（含原因）")
+    parser.add_argument("--out-xlsx", default=None,
+                        help="输出 Excel 工作簿（测算明细 + 站点汇总 + 亏损与低毛利 + 未测算）")
     parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段")
-    parser.add_argument("--sheet", type=int, default=1, help="商品表 xlsx 工作表序号")
+    parser.add_argument("--sheet", default=1, help="商品表 xlsx 工作表序号或名称，默认第 1 个")
     parser.add_argument("--header-row", type=int, default=1, help="商品表表头行号")
     parser.add_argument("--freight-sheet", type=int, default=1, help="运费表 xlsx 工作表序号")
     parser.add_argument("--freight-header-row", type=int, default=1, help="运费表表头行号")
@@ -529,11 +531,11 @@ def main(argv=None):
             f"{names} 缺少汇率，只输出 USD 口径，未给出当地币售价",
             "补 --fx 币种:汇率 后重算，汇率由使用者按当期实际情况维护"))
 
+    unpriced_headers = ["sku", "product_name", "site", "channel", "_未测算原因"]
     if args.out:
         sheetio.write_csv(args.out, EXPORT_HEADERS, rows)
     if args.quarantine:
-        sheetio.write_csv(args.quarantine, ["sku", "product_name", "site", "channel", "_未测算原因"],
-                          unpriced_rows)
+        sheetio.write_csv(args.quarantine, unpriced_headers, unpriced_rows)
 
     priced = [item for item in results if item["profit_usd"] is not None]
     negative = [item for item in priced if item["profit_usd"] < 0]
@@ -562,6 +564,35 @@ def main(argv=None):
     if args.out_md:
         with open(args.out_md, "w", encoding="utf-8") as handle:
             handle.write(build_markdown(data, args, unpriced_rows))
+
+    if args.out_xlsx:
+        site_rows = []
+        for site in sorted({item["site"] for item in results}):
+            group = [item for item in results if item["site"] == site and item["profit_usd"] is not None]
+            if not group:
+                site_rows.append([site, 0, "", "", "", "", "未测算"])
+                continue
+            site_rows.append([
+                site, len(group),
+                round(sum(item["profit_usd"] for item in group) / len(group), 2),
+                round(min(item["profit_usd"] for item in group), 2),
+                round(sum(item["profit_usd"] for item in group), 2),
+                round(sum(item["margin"] for item in group if item["margin"] is not None)
+                      / len(group), 4),
+                "有亏损" if any(item["profit_usd"] < 0 for item in group) else "正常",
+            ])
+        risk_rows = [row for row in rows
+                     if isinstance(row[17], (int, float))
+                     and (row[17] < 0 or (isinstance(row[18], (int, float))
+                                          and row[18] < args.target_margin))]
+        risk_rows.sort(key=lambda row: row[17])
+        sheetio.write_xlsx(args.out_xlsx, [
+            {"name": "测算明细", "headers": EXPORT_HEADERS, "rows": rows},
+            {"name": "站点汇总", "headers": ["站点", "可算行数", "平均净利", "最低净利",
+                                             "净利合计", "平均毛利率", "判定"], "rows": site_rows},
+            {"name": "亏损与低毛利", "headers": EXPORT_HEADERS, "rows": risk_rows},
+            {"name": "未测算", "headers": unpriced_headers, "rows": unpriced_rows},
+        ])
 
     status = "ok"
     if high_level:
