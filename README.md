@@ -36,6 +36,8 @@
 
 串联顺序：`规则 → 数据 → 选品 → 素材 → 投流 → PO → 复盘`，复盘结论回流修正下一轮的选品参数与素材方向。① 与 ② 可并行，④ 与 ⑥ 可并行；②B 单据台账是独立支线，随时可跑，产出的标准品名台账可以直接喂给 ③ 与 ⑦。完整编排说明见 [workflow-orchestration.md](skills/crossborder-ecom-ops/references/workflow-orchestration.md)。
 
+**一次真实任务按什么顺序跑、每一步吃什么进吐什么出、在哪里必须停下来等人**，见 [docs/run-chain.md](docs/run-chain.md)（技能运行链路）：含入口判断表、链路全景图、逐段运行卡片，以及「新品上线 / 门店闭店 / 周度复盘」三种真实跑法。
+
 ## 安装
 
 ```bash
@@ -131,6 +133,9 @@ cd ecom-agent-skills/skills/ecom-roi-review/examples    && ./demo.sh   # ROI 复
 ecom-agent-skills/
 ├── README.md
 ├── LICENSE
+├── CHANGELOG.md
+├── docs/
+│   └── run-chain.md                技能运行链路：入口判断、链路全景、逐段卡片与真实跑法
 └── skills/
     ├── crossborder-ecom-ops/          总控层：阶段路由 + 端到端编排 + Prompt 工程方法
     │   ├── SKILL.md
