@@ -252,14 +252,14 @@ def main(argv=None):
         records, columns = load_rows(args.input, args.sheet, args.header_row, mapping)
     except (OSError, ValueError) as error:
         sheetio.emit(sheetio.make_envelope("roi_review", "blocked", 0.0, {"error": str(error)},
-                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]))
+                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]), out_json=args.out_json)
         return 2
 
     flags = []
     if not records:
         sheetio.emit(sheetio.make_envelope("roi_review", "blocked", 0.0, {"error": "没有可核算的数据行"},
                                            [sheetio.flag("high", "empty_input", "没有读到有效的投放数据",
-                                                         "确认表头行与字段名")]))
+                                                         "确认表头行与字段名")]), out_json=args.out_json)
         return 2
     if "spend" not in columns:
         flags.append(sheetio.flag("high", "missing_spend", "没有识别到花费列，无法计算 ROAS",
@@ -269,7 +269,7 @@ def main(argv=None):
                                   "用 --map 指定，例如 --map 成交额=revenue"))
     if any(flag["type"] in ("missing_spend", "missing_revenue") for flag in flags):
         sheetio.emit(sheetio.make_envelope("roi_review", "blocked", 0.0,
-                                           {"detected_columns": sorted(columns)}, flags))
+                                           {"detected_columns": sorted(columns)}, flags), out_json=args.out_json)
         return 2
 
     cost_mode = "none"
@@ -383,8 +383,6 @@ def main(argv=None):
         ],
         "detected_columns": sorted(columns),
     }
-    if args.out_json:
-        sheetio.write_json(args.out_json, export)
     if args.out_md:
         with open(args.out_md, "w", encoding="utf-8") as handle:
             handle.write(markdown)
@@ -401,7 +399,7 @@ def main(argv=None):
         sources=[{"ref": os.path.basename(args.input), "as_of": period_end or ""}],
         assumptions=assumptions,
     )
-    sheetio.emit(envelope)
+    sheetio.emit(envelope, out_json=args.out_json)
     sys.stderr.write(f"[roi_review] {len(groups)} 个分组，{totals_group['rows']} 行数据，"
                      f"ROAS {fmt(totals_group['roas'])}，净利 {fmt(totals_group['net_profit'])}\n")
     return 0

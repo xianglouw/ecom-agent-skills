@@ -80,19 +80,21 @@ Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法�
 
 统一只用 Python 标准库（不需要 pandas / openpyxl，`.xlsx` 由内置读取器解析），列名支持中英文别名自动识别，识别不到时用 `--map 原列名=标准字段`。脚本只做确定性计算与校验，不调用平台接口，除 `--out*` 指定路径外不写任何文件。
 
+产物参数四个脚本一致：`--out` 主表 CSV、`--out-json` 输出信封、`--out-md` Markdown 报告、`--quarantine` 被隔离的问题行 CSV。信封默认打到 stdout，加 `--out-json` 时同一份内容落盘（含 `blocked` 在内的所有路径都写），下游直接读文件即可。
+
 ```bash
 # 阶段 1：费率核算 + 扣费风险标记
 python3 scripts/fee_check.py orders.csv --rates 费率表.csv [--rates 更多表.csv] --fx USD:7.20 \
-  --out-json fee.json --out-csv fee.csv
+  --out fee.csv --out-json fee.json
 python3 scripts/fee_check.py --rates 费率表.csv --summary    # 只检查规则覆盖度
 
 # 阶段 2：表格清洗与结构化
-python3 scripts/clean_table.py raw.xlsx --out clean.csv --report clean.report.json \
+python3 scripts/clean_table.py raw.xlsx --out clean.csv --out-json clean.json \
   --require sku,price --dedupe-on sku,date --quarantine bad_rows.csv
 
 # 阶段 4：PO 单生成 + 校验
 python3 scripts/po_build.py sourcing.csv --supplier "供应商A" --currency USD --lead-time 30 \
-  --out PO.csv --report PO.report.json [--po-no PO-20260914-001] [--max-amount 5000]
+  --out PO.csv --out-json PO.json [--po-no PO-20260914-001] [--max-amount 5000]
 
 # 阶段 5：ROI 复盘
 python3 scripts/roi_review.py 投放明细.xlsx --group-by campaign --compare 上期.csv \

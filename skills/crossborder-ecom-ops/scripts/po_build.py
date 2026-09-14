@@ -3,11 +3,11 @@
 
 用法示例：
   python3 po_build.py sourcing.csv --supplier "供应商A" --currency USD --lead-time 30 \
-      --out PO.csv --report PO.report.json --max-amount 5000
+      --out PO.csv --out-json PO.report.json --max-amount 5000
 
 把选品/补货需求表转成供应商可直接执行的 PO 单，并在生成前拦下必填缺失、数量单价异常、
 重复行、MOQ 不足、单位不一致、金额对不上、超审批阈值、交期来不及这类问题。
-只读输入，只写 --out/--report 指定文件。
+只读输入，只写 --out/--out-json 指定文件。
 """
 
 import argparse
@@ -87,7 +87,7 @@ def main(argv=None):
     parser.add_argument("--supplier", required=True, help="供应商名称")
     parser.add_argument("--currency", default=None, help="采购币种，如 USD；表内有币种列时以表内为准")
     parser.add_argument("--out", required=True, help="输出 PO 单 CSV")
-    parser.add_argument("--report", default=None, help="输出校验报告 JSON")
+    parser.add_argument("--out-json", default=None, help="输出校验报告 JSON")
     parser.add_argument("--po-no", default=None, help="PO 号；不填则按日期自动生成")
     parser.add_argument("--order-date", default=None, help="下单日期，默认今天")
     parser.add_argument("--lead-time", type=int, default=30, help="默认交期天数，默认 30")
@@ -109,11 +109,11 @@ def main(argv=None):
         headers, body = sheetio.read_table(args.input, sheet=args.sheet)
     except (OSError, ValueError) as error:
         sheetio.emit(sheetio.make_envelope("po_build", "blocked", 0.0, {"error": str(error)},
-                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]))
+                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]), out_json=args.out_json)
         return 2
     if not headers:
         sheetio.emit(sheetio.make_envelope("po_build", "blocked", 0.0, {"error": "空表"},
-                                           [sheetio.flag("high", "empty_input", "没有读到表头", "确认表头行")]))
+                                           [sheetio.flag("high", "empty_input", "没有读到表头", "确认表头行")]), out_json=args.out_json)
         return 2
 
     mapping = sheetio.apply_mapping(args.map)
@@ -128,7 +128,7 @@ def main(argv=None):
                                       f"需求表缺少 {required} 列，无法生成有效 PO",
                                       f"用 --map 指定该列，例如 --map 商品编码={required}"))
     if any(flag["level"] == "high" and flag["type"] == "missing_column" for flag in flags):
-        sheetio.emit(sheetio.make_envelope("po_build", "blocked", 0.0, {"po_no": po_no}, flags))
+        sheetio.emit(sheetio.make_envelope("po_build", "blocked", 0.0, {"po_no": po_no}, flags), out_json=args.out_json)
         return 2
 
     lines, isolated, line_flags = build_lines(headers, body, columns, args)
@@ -137,7 +137,7 @@ def main(argv=None):
         sheetio.emit(sheetio.make_envelope("po_build", "blocked", 0.0,
                                            {"po_no": po_no, "isolated": [item[0]["row"] for item in isolated]},
                                            flags + [sheetio.flag("high", "no_valid_lines", "没有可用明细行",
-                                                                 "修正需求表后重跑")]))
+                                                                 "修正需求表后重跑")]), out_json=args.out_json)
         return 2
 
     units = sorted({line["unit"] for line in lines})
@@ -230,8 +230,6 @@ def main(argv=None):
         "lines": [{key: value for key, value in line.items() if key != "computed_amount"} for line in lines],
         "source_file": os.path.basename(args.input),
     }
-    if args.report:
-        sheetio.write_json(args.report, report)
 
     status = "ok" if not isolated and not amount_mismatch else "partial"
     confidence = 0.92 if status == "ok" else 0.65
@@ -243,7 +241,7 @@ def main(argv=None):
         audit={"snapshot_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
                "po_no": po_no},
     )
-    sheetio.emit(envelope)
+    sheetio.emit(envelope, out_json=args.out_json)
     sys.stderr.write(f"[po_build] {po_no} 共 {len(lines)} 行，总额 {total_amount:.2f} {currency}，"
                      f"隔离 {len(isolated)} 行\n")
     return 0

@@ -2,11 +2,11 @@
 """阶段 2：多来源运营表格清洗与结构化。
 
 用法示例：
-  python3 clean_table.py raw.xlsx --out clean.csv --report clean.report.json \
+  python3 clean_table.py raw.xlsx --out clean.csv --out-json clean.report.json \
       --require sku,price --dedupe-on sku,date --quarantine bad_rows.csv
 
 做的事：表头别名归一、全角半角与空白清洗、金额/比例/日期标准化、空行剔除、
-按业务主键去重、必填字段校验并把不合格的行隔离输出。只写 --out/--report/--quarantine 指定文件。
+按业务主键去重、必填字段校验并把不合格的行隔离输出。只写 --out/--out-json/--quarantine 指定文件。
 """
 
 import argparse
@@ -77,7 +77,7 @@ def main(argv=None):
     )
     parser.add_argument("input", help="输入表格：.csv/.tsv/.xlsx")
     parser.add_argument("--out", required=True, help="输出清洗后的 CSV（UTF-8 BOM）")
-    parser.add_argument("--report", default=None, help="输出清洗报告 JSON")
+    parser.add_argument("--out-json", default=None, help="输出清洗报告 JSON")
     parser.add_argument("--quarantine", default=None, help="输出被隔离的问题行 CSV")
     parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段",
                         help="显式指定列名映射，可重复")
@@ -93,11 +93,11 @@ def main(argv=None):
         headers, rows = sheetio.read_table(args.input, sheet=args.sheet, header_row=args.header_row)
     except (OSError, ValueError) as error:
         sheetio.emit(sheetio.make_envelope("clean_table", "blocked", 0.0, {"error": str(error)},
-                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]))
+                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]), out_json=args.out_json)
         return 2
     if not headers:
         sheetio.emit(sheetio.make_envelope("clean_table", "blocked", 0.0, {"error": "空表或未读到表头"},
-                                           [sheetio.flag("high", "empty_input", "未读到表头", "确认表头行号")]))
+                                           [sheetio.flag("high", "empty_input", "未读到表头", "确认表头行号")]), out_json=args.out_json)
         return 2
 
     mapping = sheetio.apply_mapping(args.map)
@@ -208,8 +208,6 @@ def main(argv=None):
         "missing_required_columns": missing_required_columns,
         "field_coverage_pct": coverage,
     }
-    if args.report:
-        sheetio.write_json(args.report, report)
 
     low_coverage = [field for field, pct in coverage.items() if pct < 60 and field in required]
     for field in low_coverage:
@@ -223,7 +221,7 @@ def main(argv=None):
                                          __import__("datetime").datetime.now())}],
                                      assumptions=["数值列已去掉货币符号与千分位；日期统一 YYYY-MM-DD",
                                                   "重复行保留首次出现的记录"])
-    sheetio.emit(envelope)
+    sheetio.emit(envelope, out_json=args.out_json)
     sys.stderr.write(
         f"[clean_table] 读入 {len(rows)} 行 → 输出 {len(clean_rows)} 行；"
         f"去重 {len(duplicates)} 行，隔离 {len(quarantined)} 行，空行 {empty_dropped} 行\n"

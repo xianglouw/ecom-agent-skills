@@ -2,12 +2,12 @@
 """阶段 1：平台费率核算与扣费风险标记。
 
 用法示例：
-  python3 fee_check.py orders.csv --rates amazon_us_fee_v2026-09.csv --out-json fee.json --out-csv fee.csv
+  python3 fee_check.py orders.csv --rates amazon_us_fee_v2026-09.csv --out fee.csv --out-json fee.json
   python3 fee_check.py --rates 费率表.csv --summary          # 只看规则覆盖度
 
 按订单（平台/站点/类目/价格）在费率表里做优先级匹配，算出佣金、支付手续费、
 履约/仓储费、税费，得出净利与保本 ROAS，并标记规则未覆盖、负毛利、汇率缺失、
-费率过旧等风险。只读输入，只写 --out-json/--out-csv 指定文件。
+费率过旧等风险。只读输入，只写 --out/--out-json 指定文件。
 """
 
 import argparse
@@ -261,7 +261,7 @@ def main(argv=None):
                         help="费率对照表，可重复传入多个平台/站点文件")
     parser.add_argument("--summary", action="store_true", help="只输出费率表覆盖情况，不核算订单")
     parser.add_argument("--out-json", default=None, help="输出结果 JSON")
-    parser.add_argument("--out-csv", default=None, help="输出明细 CSV")
+    parser.add_argument("--out", default=None, help="输出明细 CSV")
     parser.add_argument("--fx", action="append", default=[], metavar="币种:汇率",
                         help="1 单位该币种等于多少目标币种，例如 USD:7.20，可重复")
     parser.add_argument("--target-currency", default=None,
@@ -291,7 +291,7 @@ def main(argv=None):
     summary = describe_rates(rates)
     if not rates:
         sheetio.emit(sheetio.make_envelope("fee_check", "blocked", 0.0, {"summary": summary}, flags +
-                                           [sheetio.flag("high", "no_rate_rows", "费率表没有可用规则行", "确认文件与列名")]))
+                                           [sheetio.flag("high", "no_rate_rows", "费率表没有可用规则行", "确认文件与列名")]), out_json=args.out_json)
         return 2
 
     if args.summary or not args.orders:
@@ -303,7 +303,7 @@ def main(argv=None):
                                       f"{summary['without_effective_date']} 行费率缺少生效日期",
                                       "补齐生效日期，否则无法判断是否已被平台调整"))
         envelope = sheetio.make_envelope("fee_check", "ok", 0.85, {"summary": summary}, flags)
-        sheetio.emit(envelope)
+        sheetio.emit(envelope, out_json=args.out_json)
         return 0
 
     mapping = sheetio.apply_mapping(args.map)
@@ -311,7 +311,7 @@ def main(argv=None):
         headers, body = sheetio.read_table(args.orders, sheet=args.sheet)
     except (OSError, ValueError) as error:
         sheetio.emit(sheetio.make_envelope("fee_check", "blocked", 0.0, {"error": str(error)},
-                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]))
+                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]), out_json=args.out_json)
         return 2
 
     if mapping:
@@ -321,7 +321,7 @@ def main(argv=None):
         flags.append(sheetio.flag("high", "missing_price",
                                   "订单表没有价格列，无法核算费率",
                                   "用 --map 指定价格列，例如 --map 售价=price"))
-        sheetio.emit(sheetio.make_envelope("fee_check", "blocked", 0.0, {"summary": summary}, flags))
+        sheetio.emit(sheetio.make_envelope("fee_check", "blocked", 0.0, {"summary": summary}, flags), out_json=args.out_json)
         return 2
 
     results = []
@@ -373,7 +373,7 @@ def main(argv=None):
     data = {"summary": summary, "totals": totals, "orders": results,
             "unmatched_rows": unmatched[:50], "fx_used": fx, "target_currency": args.target_currency}
 
-    if args.out_csv:
+    if args.out:
         export_headers = ["row", "sku", "platform", "site", "category", "price", "qty", "currency",
                           "commission", "payment_fee", "tax", "fulfillment_fee", "fba_fee", "storage_fee",
                           "fees_total", "cost_total", "revenue", "profit", "margin", "breakeven_roas",
@@ -388,9 +388,7 @@ def main(argv=None):
                          item.get("cost_total"), item.get("revenue"), item.get("profit"),
                          item.get("margin"), item.get("breakeven_roas"), item["match_note"],
                          rule.get("source", ""), rule.get("effective_date", ""), rule.get("file", "")])
-        sheetio.write_csv(args.out_csv, export_headers, rows)
-    if args.out_json:
-        sheetio.write_json(args.out_json, data)
+        sheetio.write_csv(args.out, export_headers, rows)
 
     if unmatched:
         flags.append(sheetio.flag("high", "rule_coverage_gap",
@@ -413,7 +411,7 @@ def main(argv=None):
                       + ([f"币种按 --fx 汇率折算到 {args.target_currency}；订单表中的价格与成本视为已使用该币种"]
                          if args.target_currency else []),
     )
-    sheetio.emit(envelope)
+    sheetio.emit(envelope, out_json=args.out_json)
     sys.stderr.write(f"[fee_check] 核算 {len(results)} 单，未匹配规则 {len(unmatched)} 单，"
                      f"合计费用 {totals['fees']}，合计利润 {totals['profit']}\n")
     return 0

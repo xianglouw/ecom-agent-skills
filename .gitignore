@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 
-# 脚本演示输出（--out/--report 生成的中间结果）
+# 脚本演示输出（--out/--out-json 生成的中间结果）
 **/examples/out/
 
 # macOS

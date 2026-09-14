@@ -466,6 +466,9 @@ def flag(level, kind, detail, action=""):
     return {"level": level, "type": kind, "detail": detail, "action": action}
 
 
-def emit(envelope, stream=None):
+def emit(envelope, stream=None, out_json=None):
+    """打印输出信封；指定 out_json 时把同一份信封落盘，保证 stdout 与文件内容一致。"""
     target = stream or sys.stdout
     target.write(json.dumps(envelope, ensure_ascii=False, indent=2) + "\n")
+    if out_json:
+        write_json(out_json, envelope)

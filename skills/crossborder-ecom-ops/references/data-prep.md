@@ -50,14 +50,14 @@
 
 - CSV 用 **UTF-8 BOM**（Excel 打开中文不乱码），列顺序固定为：维度列 → 数值列 → 来源列。
 - 金额保留 2 位小数，比例保留 4 位小数（0.1523）或统一用百分号，同一文件内一致。
-- 每次清洗都同时交付三件：`clean.csv`（干净数据）、`report.json`（清洗报告）、字段说明（哪些列被改名、哪些值被转换、哪些行被隔离）。
+- 每次清洗都同时交付三件：`clean.csv`（干净数据）、`clean.json`（输出信封，带清洗报告与风险标记）、字段说明（哪些列被改名、哪些值被转换、哪些行被隔离）。
 - 隔离行单独输出（`--quarantine`），不要直接丢掉——被丢掉的行往往就是数据源的配置错误。
 
 ## 脚本用法
 
 ```bash
 python3 scripts/clean_table.py raw.xlsx \
-  --out clean.csv --report clean.report.json --quarantine bad_rows.csv \
+  --out clean.csv --out-json clean.json --quarantine bad_rows.csv \
   --require sku,price --dedupe-on sku,date \
   --map "商品编码=sku" --map "广告花费=spend"
 ```
