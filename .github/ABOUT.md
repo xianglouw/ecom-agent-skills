@@ -53,21 +53,58 @@
 cross-border-ecommerce, ecommerce-automation, agent-skills, ai-agent, ai-agents, llm, prompt-engineering, vibe-coding, workflow-automation, amazon, shopee, tiktok-shop, temu, lazada, mercado-libre, roas, data-cleaning, excel, ocr, bookkeeping
 ```
 
-分四类覆盖不同搜索意图：
+### 逐条对照（含同类仓库数）
 
-| 类别 | 标签 | 命中谁 |
-| --- | --- | --- |
-| 业务品类 | `cross-border-ecommerce` `ecommerce-automation` | 搜跨境电商 / 电商自动化的人 |
-| 平台 | `amazon` `shopee` `tiktok-shop` `temu` `lazada` `mercado-libre` | 按平台名搜索的运营 |
-| 场景与指标 | `roas` `data-cleaning` `excel` `ocr` `bookkeeping` | 按具体痛点搜索的人（含拍照记账、单据识别） |
-| 技术生态 | `agent-skills` `ai-agent` `ai-agents` `llm` `prompt-engineering` `vibe-coding` `workflow-automation` | 找 Agent 技能 / 提示词工程的开发者 |
+「同类仓库数」= 在 GitHub 上挂了同一个标签的仓库数量（2026-09 实测）。**数字大 = 大词、逛的人多但你也容易被淹没；数字小 = 精准词、同行少、更容易挂在该标签首页。**
 
-> GitHub 单个 Topics 上限 **20 个**，这里刚好用满。最近一轮替换了三个：
-> `ecommerce` → `vibe-coding`（前者已被 `cross-border-ecommerce` 覆盖，后者是当下热门且贴合项目定位）、
-> `openai-codex` → `ai-agents`（搜索量远大于单一工具名）、
-> `python` → `workflow-automation`（`python` 太泛、竞争极大，几乎带不来精准流量）。
->
-> **想再增加标签点，Topics 这条路已经到顶**，剩下的关键词要靠 About 描述、Release 标题与 README 正文承载——GitHub 搜索同样会索引这三处。
+**① 品类与场景**
+
+| # | 标签 | 中文 | 同类仓库数 |
+| --- | --- | --- | --- |
+| 1 | `cross-border-ecommerce` | 跨境电商 | 109 |
+| 2 | `ecommerce-automation` | 电商自动化 | 62 |
+| 3 | `data-cleaning` | 数据清洗 | 8,220 |
+| 4 | `excel` | Excel 表格 | 22,609 |
+| 5 | `ocr` | 光学字符识别（拍照识字） | 13,970 |
+| 6 | `bookkeeping` | 记账 / 台账 | 604 |
+| 7 | `roas` | 广告投产比 | 92 |
+
+**② 平台**
+
+| # | 标签 | 中文 | 同类仓库数 |
+| --- | --- | --- | --- |
+| 8 | `amazon` | 亚马逊 | 4,006 |
+| 9 | `shopee` | 虾皮 | 216 |
+| 10 | `tiktok-shop` | TikTok 小店 | 69 |
+| 11 | `temu` | Temu（拼多多跨境） | 32 |
+| 12 | `lazada` | Lazada（东南亚） | 60 |
+| 13 | `mercado-libre` | 美客多（拉美） | 29 |
+
+**③ Agent 与 AI 工程**
+
+| # | 标签 | 中文 | 同类仓库数 |
+| --- | --- | --- | --- |
+| 14 | `agent-skills` | Agent 技能（技能包规范） | 23,043 |
+| 15 | `ai-agent` | AI 智能体 | 31,138 |
+| 16 | `ai-agents` | AI 智能体（复数，更常用） | 91,404 |
+| 17 | `llm` | 大语言模型 | 131,420 |
+| 18 | `prompt-engineering` | 提示词工程 | 18,220 |
+| 19 | `vibe-coding` | 氛围编程（AI 辅助开发） | 6,143 |
+| 20 | `workflow-automation` | 工作流自动化 | 7,467 |
+
+### 为什么必须用英文
+
+GitHub 的 Topics 只支持小写字母、数字和连字符，**中文写不进去**，也搜不到。实测：`topic:机器学习` 命中 0 个仓库，`topic:machine-learning` 命中 242,542 个；`topic:跨境电商` 命中 0 个，`topic:cross-border-ecommerce` 命中 109 个。所以这一栏只能填英文，中文关键词要靠 About 描述和 README 正文承载。
+
+### 关于「再加标签」
+
+GitHub 单个仓库的 Topics **硬上限 20 个**，这里已经用满，加不了第 21 个。想继续扩大关键词覆盖，只能靠另外三处，它们同样会被搜索索引：
+
+- **About 描述**（第一节）
+- **Release 标题与正文**（第五节）
+- **README 正文**（已含痛点对照表与运行链路）
+
+> 最近一轮替换了三个：`ecommerce` → `vibe-coding`（前者已被 `cross-border-ecommerce` 覆盖，后者是当下热门词）、`openai-codex` → `ai-agents`（搜索量远大于单一工具名）、`python` → `workflow-automation`（`python` 太泛，几乎带不来精准流量）。想换别的就用本节的标签互替，保持 20 个即可。
 
 ## 五、Release 标题（发布时用）
 
