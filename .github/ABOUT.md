@@ -50,21 +50,56 @@
 ## 四、Topics 标签（20 个，整行粘贴）
 
 ```
-cross-border-ecommerce, ecommerce, ecommerce-automation, agent-skills, ai-agent, llm, prompt-engineering, amazon, shopee, tiktok-shop, temu, lazada, mercado-libre, roas, data-cleaning, excel, ocr, bookkeeping, python, openai-codex
+cross-border-ecommerce, ecommerce-automation, agent-skills, ai-agent, ai-agents, llm, prompt-engineering, vibe-coding, workflow-automation, amazon, shopee, tiktok-shop, temu, lazada, mercado-libre, roas, data-cleaning, excel, ocr, bookkeeping
 ```
 
 分四类覆盖不同搜索意图：
 
 | 类别 | 标签 | 命中谁 |
 | --- | --- | --- |
-| 业务品类 | `cross-border-ecommerce` `ecommerce` `ecommerce-automation` | 搜跨境电商 / 电商自动化的人 |
+| 业务品类 | `cross-border-ecommerce` `ecommerce-automation` | 搜跨境电商 / 电商自动化的人 |
 | 平台 | `amazon` `shopee` `tiktok-shop` `temu` `lazada` `mercado-libre` | 按平台名搜索的运营 |
 | 场景与指标 | `roas` `data-cleaning` `excel` `ocr` `bookkeeping` | 按具体痛点搜索的人（含拍照记账、单据识别） |
-| 技术生态 | `agent-skills` `ai-agent` `llm` `prompt-engineering` `openai-codex` `python` | 找 Agent 技能 / 提示词工程的开发者 |
+| 技术生态 | `agent-skills` `ai-agent` `ai-agents` `llm` `prompt-engineering` `vibe-coding` `workflow-automation` | 找 Agent 技能 / 提示词工程的开发者 |
 
-> GitHub 单个 Topics 上限 20 个，这里刚好用满。本轮用 `ocr`、`bookkeeping` 换掉了原来的 `wayfair`、`human-in-the-loop`：平台名已经够多，而「拍照记账 / 单据识别」是另一批完全不同的搜索人群。想换回来就用第四节的任意标签替换末尾两个。
+> GitHub 单个 Topics 上限 **20 个**，这里刚好用满。最近一轮替换了三个：
+> `ecommerce` → `vibe-coding`（前者已被 `cross-border-ecommerce` 覆盖，后者是当下热门且贴合项目定位）、
+> `openai-codex` → `ai-agents`（搜索量远大于单一工具名）、
+> `python` → `workflow-automation`（`python` 太泛、竞争极大，几乎带不来精准流量）。
+>
+> **想再增加标签点，Topics 这条路已经到顶**，剩下的关键词要靠 About 描述、Release 标题与 README 正文承载——GitHub 搜索同样会索引这三处。
 
-## 五、技能运行链路（一段话，可贴到任何需要介绍的地方）
+## 五、Release 标题（发布时用）
+
+Release 标题会被 GitHub 搜索索引，也是 Releases 列表里唯一可见的一行，所以按「版本号 + 品类词 + 规模 + 场景词」来排。
+
+**主推（99 字，关键词与可读性平衡）**
+
+```
+v0.1.0 首发 — 跨境电商运营 Agent 技能集：9 个 AI 技能 / 8 段工作流，覆盖规则费率 · 表格清洗 · 拍照记账 · 选品测算 · 广告投流 · PO 采购 · ROI 复盘
+```
+
+**精简版**（42 字，适合不想标题太长时）：
+
+```
+v0.1.0 — 跨境电商运营 Agent 技能集首发：9 个技能 / 8 段工作流
+```
+
+**结果导向版**（59 字，突出改造成效）：
+
+```
+v0.1.0 — 9 个 Agent 技能接管跨境电商重复运营：规则检索分钟级、PO 与退款自动核、人力耗时降 55%
+```
+
+**中英双语版**（86 字，想同时吃英文搜索流量时）：
+
+```
+v0.1.0 首发 — 跨境电商运营 Agent 技能集 · Cross-border E-commerce Agent Skills：9 个 AI 技能 / 8 段工作流
+```
+
+> Release 标题不像 Topics 有 20 个上限，可以放心把关键词写全；正文同样会被索引，把「选品 / 投流 / 采购 / 复盘 / 拍照记账」这类词自然写进正文比堆在标题里更耐看。
+
+## 六、技能运行链路（一段话，可贴到任何需要介绍的地方）
 
 > 一条主链路、一条支线、九个技能：**① 规则费率 → ② 表格清洗 → ③ 选品测算 → ④ 广告视频素材 → ⑤ 投流结构 → ⑦ ROI 复盘** 是主链路，**⑥ PO 单** 从 ③ 分叉、和 ⑤ 汇合进 ⑦；**②B 手写单据台账** 是独立支线，任何时候都能跑，产出的标准品名台账与采销数据可以喂给 ③ 补货、⑥ 下单、⑦ 核成本。复盘结论沿虚线回流，修正下一轮的选品参数与素材方向，形成闭环。① 与 ② 可并行，④ 与 ⑥ 可并行。每个环节都交付「表格 + 结构化信封 + 待办清单」，有高风险标记就停下来等人。
 
@@ -81,7 +116,7 @@ cross-border-ecommerce, ecommerce, ecommerce-automation, agent-skills, ai-agent,
 | ⑥ PO 单 | `ecom-po-build` | 需求转成可下发的采购订单，下单前全套校验 | PO 单、校验报告、待人工确认清单 |
 | ⑦ ROI 复盘 | `ecom-roi-review` | 算 ROAS/ACOS/净利，分组环比定位异常，出下周动作 | 分组复盘表、环比变化、归因链与周报 |
 
-## 六、怎么设置
+## 七、怎么设置
 
 1. 打开 https://github.com/xianglouw/ecom-agent-skills
 2. 右侧 **About** 一栏点齿轮图标
@@ -91,7 +126,7 @@ cross-border-ecommerce, ecommerce, ecommerce-automation, agent-skills, ai-agent,
 6. **Social preview** 上传仓库里的 `docs/social-preview.png`
 7. 保存
 
-## 七、社交预览图（Social preview）
+## 八、社交预览图（Social preview）
 
 同一个弹窗里有 **Social preview → Upload an image**，传仓库里现成的那张：
 
@@ -103,7 +138,7 @@ docs/social-preview.png
 
 需要改文案时重跑生成脚本即可（图形由 Pillow 直接绘制，改字不用重排版）。
 
-## 八、仓库文件索引（给来访者指路）
+## 九、仓库文件索引（给来访者指路）
 
 | 想了解什么 | 看哪个文件 |
 | --- | --- |
@@ -115,12 +150,12 @@ docs/social-preview.png
 | 最新版本的发布说明（可直接贴到 Release） | [docs/release-notes-v0.1.0.md](../docs/release-notes-v0.1.0.md) |
 | 仓库社交预览图 | [docs/social-preview.png](../docs/social-preview.png) |
 
-## 九、曝光自查清单
+## 十、曝光自查清单
 
 - [ ] About 描述已填，且包含「跨境电商」「Agent」「Excel」「台账 / 单据」四类词
 - [ ] Topics 至少填满 15 个
 - [ ] README 第一屏有中英双语一句话说明（已具备）
 - [ ] README 里有指向 `docs/run-chain.md` 的入口（已具备）
 - [ ] 每个技能的 `SKILL.md` description 写清「做什么 + 什么时候用」（决定技能会不会被自动选中）
-- [ ] 打一个 tag 并发布 Release，仓库会多一个 Releases 入口
+- [ ] 打 tag 并发布 Release，仓库多一个 Releases 入口；标题用第五节的推荐版（关键词会被搜索索引）
 - [ ] 仓库设为 Public
