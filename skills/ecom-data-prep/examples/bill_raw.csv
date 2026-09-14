@@ -1,0 +1,10 @@
+﻿费用类型 Type of Fee,费用发生时间 Cost Incurred,事件名称 Event,计费产品 Billing Product,计费项 Billing Items,线索号 Clue Number,报价币种含税金额 Amount of Quotation Currency(Tax Included),报价币种不含税金额 Quoted Currency Amount Excluding Tax,报价币种税额 Currency of Quotation Tax amount,结算币种含税金额 Amount of Settlement Currency(Tax Included),结算币种不含税金额 Settlement Currency Amount Excluding Tax,结算币种税额 Currency of Settlement Tax amount,报价币种 Quotation Currency,结算币种 Settlement Currency,税率 Tax Rate,汇率 Exchange rate,客户编码 Payments Account No.,客户名称 Customer Name,客户商品编码 Seller SKU,商品名称 SKU Name,计费重量 Billing Weight,仓库名称 Warehouse name,备注 Notes
+计费凭证,2026-08-20T00:00:00+0800,订单出库打包完成（客户整单维度）_FOP,海外仓A,OB-Pick&Pack(By Order),SO20268K000000001,1.24,1.24,0,1.24,1.24,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,SKU-001,收纳盒,,海外仓A,按单实操
+计费凭证,2026-08-19T00:00:00+0800,订单出库打包完成（客户整单维度）_FOP,海外仓A,OB-Pick&Pack(By Order),SO20268K000000002,1.24,1.24,0,1.24,1.24,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,SKU-001,收纳盒,,海外仓A,
+计费凭证,2026-08-18T00:00:00+0800,耗材管理（耗材维度）_FOP,海外仓A,Packing Charge,MAT20268A000000003,1.4,1.4,0,1.4,1.4,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,,,,海外仓A,纸箱 M
+计费凭证,2026-08-18T00:00:00+0800,订单出库打包完成（客户整单维度）_FOP,海外仓A,OB-Pick&Pack,SO20268K000000004,0,0,0,0,0,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,,,,海外仓A,0 元计费明细，正常保留
+计费凭证,2026-08-15T00:00:00+0800,仓储费计费（SKU 维度）,海外仓A,Storage Fee,ST20268A000000005,0.045360,0.045360,0,0.045360,0.045360,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,SKU-002,折叠桌,0.36,海外仓A,6 位小数，不要四舍五入
+计费凭证,2026-08-31T00:00:00+0800,仓储费计费（SKU 维度）,海外仓A,Storage Fee,ST20268A000000006,0.001,0.001,0,0.001,0.001,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,SKU-003,置物架,0.12,海外仓A,
+计费凭证,2026-07-08T00:00:00+0800,仓发计费（运单维度）,陆运TK专项,陆运运费,FS20268A000000007,197.936,197.936,0,197.936,197.936,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,,,17.922,海外仓A,跨账期：7 月费用出现在 8 月账单
+计费凭证,2026-08-12T00:00:00+0800,仓发计费（运单维度）,仓发-TK中泰/中越快速专线,Base Rate,FS20268A000000008,155.24632,155.24632,0,155.24632,155.24632,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,,,10,海外仓A,5 位小数
+计费凭证,2026-08-31T00:00:00+0800,增值服务单消息（整单维度）,海外仓标准增值计费产品,Special Value Added Service - Project Based,VASA000000009,50,50,0,50,50,0,CNY,CNY,0,1,KH0001,某某跨境电子商务商行,,,,海外仓A,仓间转运费

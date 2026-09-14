@@ -138,7 +138,8 @@ def to_date(value, default_year=None):
     """统一成 YYYY-MM-DD；无法判定返回 None。
 
     支持 2026-09-01 / 2026/9/1 / 2026.9.1 / 2026年9月1日 / 20260901 /
-    09-01-2026（判为 M/D/Y） / 13-01-2026（判为 D/M/Y） / Excel 序列号。
+    09-01-2026（判为 M/D/Y） / 13-01-2026（判为 D/M/Y） / Excel 序列号 /
+    ISO 8601 带时区（2026-08-20T00:00:00+0800）。
     月日无年份时可传 default_year。
     """
     if value is None:
@@ -152,6 +153,9 @@ def to_date(value, default_year=None):
         return _build_date(int(text[:4]), int(text[4:6]), int(text[6:]))
     if re.fullmatch(r"\d{6}", text):
         return _build_date(2000 + int(text[:2]), int(text[2:4]), int(text[4:6]))
+    iso = re.match(r"^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})[T ]\d{1,2}:\d{2}", text)
+    if iso:
+        return _build_date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
     if re.fullmatch(r"\d+(\.\d+)?", text):
         serial = float(text)
         if 20000 <= serial <= 80000:
@@ -552,10 +556,12 @@ def write_xlsx(path, sheets):
 # ---------------------------------------------------------------- 字段别名
 
 ALIASES = {
-    "date": ["date", "日期", "报告日期", "统计日期", "数据日期", "时间", "日期时间", "reportdate", "statdate", "day"],
-    "sku": ["sku", "商品编码", "商家编码", "店铺sku", "sellersku", "msku", "子sku", "货号", "商品货号", "itemid"],
+    "date": ["date", "日期", "报告日期", "统计日期", "数据日期", "时间", "日期时间", "reportdate", "statdate", "day",
+             "费用发生时间", "费用发生时间costincurred", "计费时间", "costincurred", "账单日期"],
+    "sku": ["sku", "商品编码", "商家编码", "店铺sku", "sellersku", "msku", "子sku", "货号", "商品货号", "itemid",
+            "客户商品编码", "客户商品编码sellersku", "商品编号fopsku", "商品编号"],
     "asin": ["asin", "子asin", "listingid", "listing", "产品asin"],
-    "product_name": ["商品名称", "品名", "产品名称", "title", "标题", "productname"],
+    "product_name": ["商品名称", "品名", "产品名称", "title", "标题", "productname", "商品名称skuname"],
     "spec": ["规格", "颜色尺码", "变体", "variation", "spec", "属性"],
     "platform": ["平台", "渠道", "channel", "platform", "销售平台", "站点平台"],
     "site": ["site", "站点", "国家", "市场", "marketplace", "country", "国家站点", "地区", "销售国家"],
@@ -578,9 +584,10 @@ ALIASES = {
     "unit": ["单位", "unit", "计量单位"],
     "moq": ["moq", "起订量", "最小起订量", "minimumorderqty"],
     "lead_time_days": ["交期", "生产周期", "交期天数", "leadtime", "leadtime days", "备货周期"],
-    "warehouse": ["仓库", "入库仓", "目的仓", "warehouse", "收货仓"],
+    "warehouse": ["仓库", "入库仓", "目的仓", "warehouse", "收货仓",
+                  "仓库名称", "仓库编号", "仓库名称warehousename", "仓库编号warehouseno"],
     "expected_arrival": ["期望到仓", "到仓日期", "期望到货日期", "expectedarrival", "要求到仓日"],
-    "remark": ["备注", "说明", "remark", "note", "notes"],
+    "remark": ["备注", "说明", "remark", "note", "notes", "备注notes"],
     "commission_rate": ["佣金", "佣金比例", "佣金率", "commissionrate", "commission", "平台佣金", "佣金费率"],
     "payment_rate": ["支付费率", "支付手续费", "交易手续费", "paymentrate", "payment", "收款手续费"],
     "fulfillment_fee": ["履约费", "派送费", "配送费", "物流费", "fulfillmentfee", "shippingfee", "尾程费"],
@@ -596,7 +603,7 @@ ALIASES = {
     "weight_band": ["重量区间", "重量段", "weightband", "weightrange", "重量区间lb", "重量区间kg"],
     "wholesale_price": ["批发价", "批发售价", "批发单价", "wholesaleprice", "b2bprice"],
     "free_shipping_threshold": ["免邮门槛", "包邮门槛", "免邮起价", "freeshippingthreshold", "包邮起价"],
-    "tax_rate": ["税率", "vat", "vat税率", "taxrate", "税费率", "gst"],
+    "tax_rate": ["税率", "vat", "vat税率", "taxrate", "税费率", "gst", "税率taxrate"],
     "audience": ["人群", "受众", "目标人群", "目标受众", "人群画像", "受众画像", "audience",
                  "targetaudience", "targetgroup"],
     "selling_points": ["卖点", "核心卖点", "产品卖点", "主要卖点", "sellingpoints", "usp", "sellingpoint"],
@@ -631,6 +638,40 @@ ALIASES = {
     "effective_date": ["生效日期", "生效时间", "effectivedate", "适用日期"],
     "condition": ["条件", "适用条件", "备注条件", "condition", "限制"],
     "updated_at": ["更新时间", "录入时间", "updatedat", "lastupdated", "更新日期"],
+
+    # ---- 物流 / 仓储费用账单（海外仓、3PL、头程尾程结算单）----
+    "fee_type": ["费用类型", "费用类型typeoffee", "计费类型"],
+    "billing_event": ["事件名称", "事件名称event"],
+    "billing_product": ["计费产品", "计费产品billingproduct"],
+    "billing_item": ["计费项", "计费项名称", "计费项billingitems", "计费项名称billingitems"],
+    "clue_no": ["线索号", "线索号cluenumber", "cluenumber"],
+    "settlement_amount": ["结算币种含税金额", "结算币种含税金额amountofsettlementcurrencytaxincluded",
+                          "amountofsettlementcurrencytaxincluded", "应付含税金额", "含税应结金额"],
+    "settlement_amount_ex_tax": ["结算币种不含税金额", "结算币种不含税金额settlementcurrencyamountexcludingtax",
+                                 "settlementcurrencyamountexcludingtax"],
+    "settlement_tax": ["结算币种税额", "结算币种税额currencyofsettlementtaxamount",
+                       "currencyofsettlementtaxamount"],
+    "quotation_amount": ["报价币种含税金额", "报价币种含税金额amountofquotationcurrencytaxincluded",
+                         "amountofquotationcurrencytaxincluded", "报价含税金额"],
+    "quotation_amount_ex_tax": ["报价币种不含税金额", "报价币种不含税金额quotedcurrencyamountexcludingtax",
+                                "quotedcurrencyamountexcludingtax", "报价不含税金额"],
+    "quotation_tax": ["报价币种税额", "报价币种税额currencyofquotationtaxamount",
+                      "currencyofquotationtaxamount"],
+    "quotation_currency": ["报价币种", "报价币种quotationcurrency"],
+    "settlement_currency": ["结算币种settlementcurrency", "结算货币"],   # 短名「结算币种」留给 currency，避免与既有口径冲突
+    "exchange_rate": ["汇率", "汇率exchangerate", "exchangerate"],
+    "billing_weight": ["计费重量", "计费重量billingweight"],
+    "billing_volume": ["计费体积", "计费体积billingvolume"],
+    "actual_pallets": ["实际托数", "实际托数actualnumberofpallets"],
+    "package_qty": ["包裹数", "包裹数packagequantity", "卡派总箱数", "卡派总箱数totalcartonquantitypertruck"],
+    "customer_code": ["客户编码", "客户编码paymentsaccountno", "paymentsaccountno", "货主编号ownerno"],
+    "customer_name": ["客户名称", "客户名称customername", "货主名称nameoofowner"],
+    "destination_country": ["目的国家", "目的国家destinationcounty", "destinationcountry"],
+    "origin_country": ["始发国家", "始发国家originatingcountry"],
+    "service_product_code": ["服务产品编码", "服务产品编码serviceproductcode"],
+    "service_product_name": ["服务产品名称", "服务产品名称serviceproductname"],
+    "outbound_order_no": ["出库单号", "出库单号fopoutboundorderno", "fopoutboundorderno"],
+    "waybill_no": ["运单号", "fs运单号", "fs运单号fsorderno", "fsorderno", "承运商主运单号waybillcode"],
 }
 
 

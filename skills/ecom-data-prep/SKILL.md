@@ -27,7 +27,16 @@ python3 scripts/clean_table.py ad_raw.csv \
 
 # 从 Excel 的指定工作表读
 python3 scripts/clean_table.py 后台导出.xlsx --sheet 广告明细 --header-row 2 --out clean.csv
+
+# 物流/仓储费用账单（京东国际、海外仓、3PL 结算单）：中英双语表头自动识别
+python3 scripts/clean_table.py 账单.xlsx --sheet "出库-Outbound" \
+  --require "线索号 Clue Number,费用发生时间 Cost Incurred,结算币种含税金额" \
+  --dedupe-on clue_no \
+  --out out/出库.csv --out-xlsx out/出库.xlsx --out-md out/出库.md --quarantine out/出库_隔离行.csv
 ```
+
+`--require` / `--keep` / `--dedupe-on` 三种写法都认：标准字段名（`clue_no`）、去下划线写法（`clueno`）、
+原始中英双语列名（`线索号 Clue Number`）。示例数据见 `examples/bill_raw.csv`。
 
 `--out-xlsx` 一次给四张工作表：清洗结果 / 隔离行 / 字段覆盖率 / 清洗台账（改名映射与转换记录）。
 
@@ -37,6 +46,13 @@ python3 scripts/clean_table.py 后台导出.xlsx --sheet 广告明细 --header-r
 - 表结构不一致时先补列再合并，不要合并后再补——那样会丢行。
 - 数值统一：`"¥1,234.50"` 这类带符号千分位会被解析成数字；欧式小数 `"10,84"` 读作 10.84 而不是 1084，避免差 100 倍。
 - 日期统一 `YYYY-MM-DD`；比例统一写法并在 `assumptions` 声明。
+- **费用账单场景**：ISO 8601 带时区日期（`2026-08-20T00:00:00+0800`）自动转 `YYYY-MM-DD`；账单单据里
+  常用「两套币种 × 含税/不含税/税额」六列，标准字段分别是 `settlement_amount` / `settlement_amount_ex_tax`
+  / `settlement_tax`（结算币种）与 `quotation_amount` / `quotation_amount_ex_tax` / `quotation_tax`（报价币种）。
+- **明细金额按原精度保留**（最多 6 位小数，不按两位小数四舍五入）：海外仓仓储费最小到 0.000001 元，
+  四舍五入会让逐行合计对不上账单汇总页。广告/采购类金额仍按两位小数输出。
+- 3PL 账单常见的 0 元明细行（如 0 元起步价计费）是正常计费凭证，**不要当异常行剔除**；
+  做费率分析时再单独筛掉。
 - 列顺序固定：维度列 → 数值列 → 来源列。
 
 ## 风险与人工边界

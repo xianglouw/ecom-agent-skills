@@ -24,12 +24,21 @@ NUMERIC_FIELDS = {
 RATE_FIELDS = {"commission_rate", "payment_rate", "tax_rate"}
 COUNT_FIELDS = {"qty", "units", "orders", "clicks", "impressions", "moq", "lead_time_days"}
 DATE_FIELDS = {"date", "effective_date", "updated_at", "expected_arrival"}
+# 费用账单明细金额：平台/3PL 账单常有 4~6 位小数，按原精度输出，不按两位小数四舍五入
+PRECISE_FIELDS = {
+    "settlement_amount", "settlement_amount_ex_tax", "settlement_tax",
+    "quotation_amount", "quotation_amount_ex_tax", "quotation_tax",
+    "exchange_rate", "billing_weight", "billing_volume",
+}
+COERCED_FIELDS = NUMERIC_FIELDS | RATE_FIELDS | DATE_FIELDS | PRECISE_FIELDS
+# 数值列合计：写报告用，比率与汇率类不求和
+SUM_FIELDS = (NUMERIC_FIELDS | PRECISE_FIELDS) - {"exchange_rate"} - RATE_FIELDS
 
 
 def _format_value(field, value):
     if field in DATE_FIELDS:
         return to_date(value)
-    if field in RATE_FIELDS:
+    if field in RATE_FIELDS or field in PRECISE_FIELDS:
         number = to_number(value)
         if number is None:
             return None
@@ -43,6 +52,25 @@ def _format_value(field, value):
         return f"{number:.2f}"
     text = clean_text(value)
     return text
+
+
+def _resolve_names(names, known, known_norm):
+    """把 --require / --keep / --dedupe-on 传入的名字解析成实际输出列名。
+
+    兼容三种写法：标准字段原名（clue_no）、去掉下划线与大小写的写法（clueno）、
+    原始中英双语列名（线索号 Clue Number / 结算币种含税金额）。
+    """
+    resolved = []
+    for name in names:
+        if name in known:
+            resolved.append(name)
+            continue
+        by_canon = sheetio.canonical_field(name)
+        if by_canon in known:
+            resolved.append(by_canon)
+            continue
+        resolved.append(known_norm.get(norm_key(name), name))
+    return resolved
 
 
 def build_headers(headers, mapping, dedupe_required):
@@ -70,6 +98,108 @@ def build_headers(headers, mapping, dedupe_required):
     return output, renamed
 
 
+def _num_text(number):
+    return f"{number:.6f}".rstrip("0").rstrip(".") or "0"
+
+
+def _md_table(headers, rows):
+    lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
+    for row in rows:
+        lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
+    return lines
+
+
+def write_md_report(path, title, report, clean_rows, coverage, quarantined, renamed):
+    """Markdown 报告：给人读的结论版，含合计、覆盖率、改名映射与隔离原因。"""
+    lines = [f"# {title}", ""]
+    lines.append(f"- 输入：`{report['input']}`")
+    lines.append(f"- 行数：读入 {report['rows_in']} → 输出 {report['rows_out']}；"
+                 f"丢弃空行 {report['empty_rows_dropped']}，删除重复 {report['duplicates_removed']}，"
+                 f"隔离 {report['quarantined']}")
+    lines.append(f"- 去重主键：{'、'.join(report['dedupe_key']) or '全列'}")
+    lines.append(f"- 必填字段：{'、'.join(report['required_fields']) or '无'}")
+    lines.append("")
+
+    sums = []
+    for field in report["output_columns"]:
+        if field not in SUM_FIELDS:
+            continue
+        total = 0.0
+        hit = 0
+        for _, values in clean_rows:
+            number = to_number(values.get(field) or "")
+            if number is not None:
+                total += number
+                hit += 1
+        if hit:
+            sums.append((field, _num_text(round(total, 6)), hit))
+    lines.append("## 数值列合计")
+    lines.append("")
+    lines.extend(_md_table(["字段", "合计", "有值行数"], sums) if sums
+                 else ["（没有可求和的数值列）"])
+    lines.append("")
+
+    low = [(field, pct) for field, pct in coverage.items() if pct < 100]
+    low.sort(key=lambda item: item[1])
+    lines.append("## 字段覆盖率")
+    lines.append("")
+    lines.append(f"共 {len(report['output_columns'])} 列；覆盖率不足 100% 的 {len(low)} 列（未列出的列为 100%）。")
+    lines.append("")
+    if low:
+        lines.extend(_md_table(["字段", "有值占比%"],
+                               [[field, pct] for field, pct in low[:40]]))
+        if len(low) > 40:
+            lines.append("")
+            lines.append(f"（其余 {len(low) - 40} 列省略，完整口径见字段覆盖率工作表）")
+    lines.append("")
+
+    lines.append("## 列名归一")
+    lines.append("")
+    if renamed:
+        items = list(renamed.items())
+        lines.extend(_md_table(["原列名", "标准字段"], items[:40]))
+        if len(items) > 40:
+            lines.append("")
+            lines.append(f"（其余 {len(items) - 40} 列省略，完整映射见清洗台账工作表）")
+    else:
+        lines.append("无需归一，表头已符合标准字段。")
+    lines.append("")
+
+    lines.append("## 隔离行")
+    lines.append("")
+    if quarantined:
+        reasons = {}
+        for _, _, reason in quarantined:
+            reasons[reason] = reasons.get(reason, 0) + 1
+        lines.extend(_md_table(["隔离原因", "行数"], sorted(reasons.items(), key=lambda kv: -kv[1])))
+    else:
+        lines.append("无。")
+    lines.append("")
+
+    lines.append("## 数值无法解析")
+    lines.append("")
+    if report.get("coercion_counts"):
+        lines.extend(_md_table(["字段", "解析失败次数"],
+                               sorted(report["coercion_counts"].items(), key=lambda kv: -kv[1])[:20]))
+    else:
+        lines.append("无。")
+    lines.append("")
+
+    if report.get("missing_required_columns"):
+        lines.append("## 缺失的必填列")
+        lines.append("")
+        lines.append("、".join(report["missing_required_columns"]))
+        lines.append("")
+
+    lines.append("---")
+    lines.append("")
+    lines.append("口径：数值列已去掉货币符号与千分位；日期统一 YYYY-MM-DD；明细金额按原精度保留（最多 6 位小数）；"
+                 "重复行保留首次出现的记录。")
+    lines.append("")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="清洗并结构化运营表格：表头归一、数值与日期标准化、去重、必填校验。",
@@ -80,6 +210,7 @@ def main(argv=None):
     parser.add_argument("--out-json", default=None, help="输出清洗报告 JSON")
     parser.add_argument("--quarantine", default=None, help="输出被隔离的问题行 CSV")
     parser.add_argument("--out-xlsx", default=None, help="输出 Excel 工作簿（清洗结果 + 隔离行 + 字段覆盖率）")
+    parser.add_argument("--out-md", default=None, help="输出 Markdown 报告（给人读的结论版）")
     parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段",
                         help="显式指定列名映射，可重复")
     parser.add_argument("--require", default="", help="必填字段，逗号分隔，例如 sku,price")
@@ -105,9 +236,13 @@ def main(argv=None):
     new_headers, renamed = build_headers(headers, mapping, args.dedupe_on)
     flags = []
 
-    required = [item.strip() for item in args.require.split(",") if item.strip()]
     known = set(new_headers)
-    missing_required_columns = [name for name in required if norm_key(name) not in known]
+    known_norm = {}
+    for name in new_headers:
+        known_norm.setdefault(norm_key(name), name)
+    required = _resolve_names([item.strip() for item in args.require.split(",") if item.strip()],
+                              known, known_norm)
+    missing_required_columns = [name for name in required if name not in known]
     for name in missing_required_columns:
         flags.append(sheetio.flag("high", "missing_required_column",
                                   f"必填字段 {name} 在表中不存在", "补齐该列或确认是否用 --map 指定了正确列名"))
@@ -127,7 +262,7 @@ def main(argv=None):
                 coercions[field] = coercions.get(field, 0) + 1
                 values[field] = clean_text(cell)
             else:
-                if field in NUMERIC_FIELDS | RATE_FIELDS | DATE_FIELDS and str(converted) != clean_text(cell):
+                if field in COERCED_FIELDS and str(converted) != clean_text(cell):
                     coercions[field] = coercions.get(field, 0) + 1
                 values[field] = converted
         if not any(value not in (None, "") for value in values.values()):
@@ -137,7 +272,8 @@ def main(argv=None):
             continue
         records.append((offset, values))
 
-    dedupe_fields = [item.strip() for item in args.dedupe_on.split(",") if item.strip()]
+    dedupe_fields = _resolve_names([item.strip() for item in args.dedupe_on.split(",") if item.strip()],
+                                  known, known_norm)
     if dedupe_fields and any(field not in known for field in dedupe_fields):
         flags.append(sheetio.flag("medium", "dedupe_key_missing",
                                   f"去重主键 {dedupe_fields} 有字段不存在，已改为整行去重",
@@ -163,7 +299,7 @@ def main(argv=None):
     clean_rows = []
     quarantined = []
     for offset, values in deduped:
-        missing = [name for name in required if not clean_text(values.get(norm_key(name)) or "")]
+        missing = [name for name in required if not clean_text(values.get(name) or "")]
         if missing:
             quarantined.append((offset, values, "缺少必填字段：" + "、".join(missing)))
             continue
@@ -177,11 +313,12 @@ def main(argv=None):
         flags.append(sheetio.flag("low", "duplicates_removed",
                                   f"按主键 {dedupe_fields or '全列'} 删除 {len(duplicates)} 行重复"))
 
-    if not args.out and not args.out_xlsx:
-        sys.stderr.write("请至少指定 --out（CSV）或 --out-xlsx（Excel）之一\n")
+    if not args.out and not args.out_xlsx and not args.out_md:
+        sys.stderr.write("请至少指定 --out（CSV）/ --out-xlsx（Excel）/ --out-md（Markdown）之一\n")
         return 2
 
-    keep = [item.strip() for item in args.keep.split(",") if item.strip()]
+    keep = set(_resolve_names([item.strip() for item in args.keep.split(",") if item.strip()],
+                              known, known_norm))
     export_headers = [field for field in new_headers if not keep or field in keep]
     export_rows = [[values.get(field) or "" for field in export_headers] for _, values in clean_rows]
     quarantine_headers = list(export_headers) + ["_隔离原因", "_原行号"]
@@ -238,6 +375,12 @@ def main(argv=None):
                       ["必填字段", "、".join(required) or "无"],
                       ["列名归一", "；".join(f"{k}→{v}" for k, v in renamed.items()) or "无需归一"]]},
         ])
+
+    if args.out_md:
+        sheet_name = args.sheet if not str(args.sheet).isdigit() else ""
+        write_md_report(args.out_md,
+                        f"数据清洗报告：{os.path.basename(args.input)}" + (f"（{sheet_name}）" if sheet_name else ""),
+                        report, clean_rows, coverage, quarantined, renamed)
 
     envelope = sheetio.make_envelope("clean_table", status, confidence, report, flags,
                                      sources=[{"ref": os.path.basename(args.input), "as_of": sheetio.to_date(

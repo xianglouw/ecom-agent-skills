@@ -23,6 +23,21 @@ for f in e['flags']:
 "
 
 echo
+echo "== 场景二：物流/仓储费用账单（中英双语表头 + ISO 8601 带时区日期 + 6 位小数金额）"
+"$PY" "$S/clean_table.py" bill_raw.csv \
+  --require "线索号 Clue Number,费用发生时间 Cost Incurred,结算币种含税金额" --dedupe-on clue_no \
+  --out out/bill_clean.csv --out-md out/bill_clean.md --out-xlsx out/bill_clean.xlsx > /dev/null
+
+"$PY" -c "
+import csv
+rows = list(csv.DictReader(open('out/bill_clean.csv', encoding='utf-8-sig')))
+total = sum(float(r['settlement_amount'] or 0) for r in rows)
+print('  清洗', len(rows), '行；结算币种含税金额合计 =', round(total, 6))
+print('  日期', rows[0]['date'], '｜金额', rows[4]['settlement_amount'], '（6 位小数原样保留）')
+print('  必填列校验通过：线索号 / 费用发生时间 / 结算币种含税金额 三列均用原始双语列名指定')
+"
+
+echo
 echo "完成。输出目录：examples/out/"
 ls out | sed 's/^/  /'
 echo "看干净表：  head out/clean.csv"
