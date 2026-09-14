@@ -1,5 +1,7 @@
 # ecom-agent-skills
 
+> Cross-border e-commerce agent skills — a 7-stage AI workflow: platform rules & fees → data cleaning → product selection → video creative → ads planning → PO build → ROI review. Works with Amazon, Shopee, TikTok Shop, Temu, Lazada, Wayfair and Mercado Libre.
+
 面向跨境电商多平台运营的 Agent 技能集。把运营全链路拆成**可独立安装、可单独调用、可串成流水线**的技能：每个技能自带业务手册、可执行的核算脚本和风险兜底规则，装进支持 Agent Skills 约定的工具里就能直接用。
 
 适用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台。
