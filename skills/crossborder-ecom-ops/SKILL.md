@@ -1,21 +1,22 @@
 ---
 name: crossborder-ecom-ops
-description: 跨境电商多平台运营端到端工作流，覆盖平台规则与费率检索、运营表格数据整理、广告视频投流方案、PO 单制作与校验、ROI 数据复盘五类任务。用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、独立站等平台的合规规则与费率整理、扣费风险排查、多来源表格合并清洗、投流脚本与投放结构设计、采购订单生成、ROAS/ACOS/TACOS 核算与周报复盘等请求。
+description: 跨境电商多平台运营端到端工作流，覆盖平台规则与费率检索、运营表格数据整理、选品利润与定价测算、广告视频投流方案、PO 单制作与校验、ROI 数据复盘六类任务。用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台的合规规则与费率整理、扣费风险排查、多来源表格合并清洗、售价与关税利润测算、投流脚本与投放结构设计、采购订单生成、ROAS/ACOS/TACOS 核算与周报复盘等请求。
 metadata:
-  short-description: 跨境电商运营五阶段自动化工作流
+  short-description: 跨境电商运营六阶段自动化工作流
 ---
 
 # 跨境电商运营 Agent 工作流
 
-五个阶段可单独调用，也可按 `规则 → 数据 → 投流 → PO → 复盘` 串联成端到端作业：
+六个阶段可单独调用，也可按 `规则 → 数据 → 选品 → 投流 → PO → 复盘` 串联成端到端作业：
 
 | 阶段 | 做什么 | 读什么 | 跑什么 |
 |---|---|---|---|
 | 1 规则信息搜集 | 多平台合规规则、费率、政策、物流规范的结构化与检索 | [references/rules-research.md](references/rules-research.md) | `scripts/fee_check.py` |
 | 2 表格数据整理 | 多来源表头归一、清洗去重、口径统一、结构化落表 | [references/data-prep.md](references/data-prep.md) | `scripts/clean_table.py` |
-| 3 广告视频投流 | 投放结构、素材脚本、出价预算、测品与止损规则 | [references/ads-video.md](references/ads-video.md) | — |
-| 4 PO 单制作 | 需求表/报价表 → 可执行的采购订单 + 校验 | [references/po-creation.md](references/po-creation.md) | `scripts/po_build.py` |
-| 5 ROI 数据复盘 | 指标核算、分组对比、归因、周报与下周动作 | [references/roi-review.md](references/roi-review.md) | `scripts/roi_review.py` |
+| 3 选品利润测算 | 逐站点算售价、佣金、运费、关税与净利，反算保本价与目标售价 | [references/selection-profit.md](references/selection-profit.md) | `scripts/selection_profit.py` |
+| 4 广告视频投流 | 投放结构、素材脚本、出价预算、测品与止损规则 | [references/ads-video.md](references/ads-video.md) | — |
+| 5 PO 单制作 | 需求表/报价表 → 可执行的采购订单 + 校验 | [references/po-creation.md](references/po-creation.md) | `scripts/po_build.py` |
+| 6 ROI 数据复盘 | 指标核算、分组对比、归因、周报与下周动作 | [references/roi-review.md](references/roi-review.md) | `scripts/roi_review.py` |
 
 Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法：见 [references/prompt-contract.md](references/prompt-contract.md)。
 
@@ -42,7 +43,7 @@ Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法�
 | 检索类 | 规则、费率、公告、物流规范查询 | 全自动检索 + 强制引用来源 | 抽样复核 |
 | 生成类 | 投流脚本、素材分镜、SOP、周报 | 全自动生成 + 结构化输出 | 发布前确认 |
 | 流程类 | PO 单、工单、数据回写 | 生成 + 校验 + 待办清单 | 提交/付款终审 |
-| 分析类 | ROI/ROAS/毛利/异常归因 | 核算 + 异常标记 + 归因链 | 高风险结论复核 |
+| 分析类 | ROI/ROAS/毛利/异常归因、选品定价与保本测算 | 核算 + 异常标记 + 归因链 | 高风险结论复核 |
 
 ## 统一输出契约
 
@@ -50,7 +51,7 @@ Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法�
 
 ```json
 {
-  "task": "fee_check | clean_table | ads_plan | po_build | roi_review",
+  "task": "fee_check | clean_table | selection_profit | ads_plan | po_build | roi_review",
   "status": "ok | partial | blocked",
   "confidence": 0.0,
   "data": {},
@@ -72,15 +73,15 @@ Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法�
 
 | 等级 | 场景示例 | AI 权限 | 人工权限 |
 |---|---|---|---|
-| 高 | 退款审批、付款下单、超阈值预算、改价、合规申诉、正毛利被判亏损、新供应商首单 | 只出判定 + 依据 + 待办 | 终审并执行 |
-| 中 | 费率未覆盖、口径不一致、环比异常波动、政策过渡期、含税口径不明 | 出结论 + 风险标注 | 抽样复核 |
+| 高 | 退款审批、付款下单、超阈值预算、改价、合规申诉、正毛利被判亏损、新供应商首单、选品净利为负、跨关税门槛定价 | 只出判定 + 依据 + 待办 | 终审并执行 |
+| 中 | 费率未覆盖、口径不一致、环比异常波动、政策过渡期、含税口径不明、运费分段未覆盖、低于目标毛利 | 出结论 + 风险标注 | 抽样复核 |
 | 低 | 字段清洗、格式转换、指标核算、脚本草稿、表格汇总 | 直接执行 | 事后抽查 |
 
 ## 脚本
 
 统一只用 Python 标准库（不需要 pandas / openpyxl，`.xlsx` 由内置读取器解析），列名支持中英文别名自动识别，识别不到时用 `--map 原列名=标准字段`。脚本只做确定性计算与校验，不调用平台接口，除 `--out*` 指定路径外不写任何文件。
 
-产物参数四个脚本一致：`--out` 主表 CSV、`--out-json` 输出信封、`--out-md` Markdown 报告、`--quarantine` 被隔离的问题行 CSV。信封默认打到 stdout，加 `--out-json` 时同一份内容落盘（含 `blocked` 在内的所有路径都写），下游直接读文件即可。
+产物参数五个脚本一致：`--out` 主表 CSV、`--out-json` 输出信封、`--out-md` Markdown 报告、`--quarantine` 被隔离的问题行 CSV。信封默认打到 stdout，加 `--out-json` 时同一份内容落盘（含 `blocked` 在内的所有路径都写），下游直接读文件即可。
 
 ```bash
 # 阶段 1：费率核算 + 扣费风险标记
@@ -92,14 +93,22 @@ python3 scripts/fee_check.py --rates 费率表.csv --summary    # 只检查规�
 python3 scripts/clean_table.py raw.xlsx --out clean.csv --out-json clean.json \
   --require sku,price --dedupe-on sku,date --quarantine bad_rows.csv
 
-# 阶段 4：PO 单生成 + 校验
+# 阶段 3：选品利润测算（多站点、多币种，零售与批发）
+python3 scripts/selection_profit.py items.csv --freight freight.csv --freight-header-row 2 \
+  --rates 费率表.csv --site-currency MX:MXN,BR:BRL --fx MXN:18.5,BRL:5.4 \
+  --de-minimis 50 --duty-rate 0.16 --target-margin 0.3 --channel both \
+  --out selection.csv --out-md selection.md --out-json selection.json
+
+# 阶段 5：PO 单生成 + 校验
 python3 scripts/po_build.py sourcing.csv --supplier "供应商A" --currency USD --lead-time 30 \
   --out PO.csv --out-json PO.json [--po-no PO-20260914-001] [--max-amount 5000]
 
-# 阶段 5：ROI 复盘
+# 阶段 6：ROI 复盘
 python3 scripts/roi_review.py 投放明细.xlsx --group-by campaign --compare 上期.csv \
   --out-md review.md --out-json review.json [--gross-margin 0.35]
 ```
+
+选品测算的汇率、佣金率、关税门槛全部来自命令行参数，脚本不内置任何费率；缺税率、缺重量、重量超出运费分段、缺汇率都会落成 `flags` 并按站点聚合，不会静默跳过。
 
 先用 `--help` 看完整参数。
 
@@ -109,6 +118,7 @@ python3 scripts/roi_review.py 投放明细.xlsx --group-by campaign --compare �
 - 结论固定附「支撑数据 + 判定规则 + 边界/反例」三段，而不是只给一个数。
 - `flags` 比结论更重要：把「我不确定什么、为什么不确认、需要谁确认」写清楚。
 - 表格默认输出 UTF-8 BOM 的 CSV（Excel 打开中文不乱码），日期统一 `YYYY-MM-DD`。
+- **要表格就给文件，不要只给结论。** 涉及逐行测算、对照、明细的交付，必须落到能直接打开的文件（CSV 主表 + Markdown 可读表），并说明每列口径；把表格塞进聊天正文的代码块等于没交付。
 - 复盘固定四段：「本周动作 → 结果 → 归因 → 下周动作」。
 - 跨阶段串联时，每个阶段先输出该阶段 JSON 信封再进入下一阶段，不要跨阶段跳步。
 - 稳定下来的判定规则和模板沉淀成可复用 Skill/SOP（写法见 prompt-contract），团队口径以沉淀文件为准，不要在对话里口头解释。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""阶段 4：采购订单（PO）生成与校验。
+"""阶段 5：采购订单（PO）生成与校验。
 
 用法示例：
   python3 po_build.py sourcing.csv --supplier "供应商A" --currency USD --lead-time 30 \

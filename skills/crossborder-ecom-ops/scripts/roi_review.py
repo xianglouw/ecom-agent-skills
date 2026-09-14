@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""阶段 5：ROI / ROAS 数据复盘核算。
+"""阶段 6：ROI / ROAS 数据复盘核算。
 
 用法示例：
   python3 roi_review.py 投放明细.xlsx --group-by campaign --compare 上期.csv \

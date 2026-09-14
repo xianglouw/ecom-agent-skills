@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """表格读写、字段归一、统一输出信封（仅用 Python 标准库）。
 
-被 clean_table.py / fee_check.py / po_build.py / roi_review.py 复用。
+被 clean_table.py / fee_check.py / po_build.py / roi_review.py / selection_profit.py 复用。
 支持 .csv/.tsv/.txt 与 .xlsx/.xlsm（xlsx 直接用 zipfile + XML 解析，不依赖 pandas/openpyxl）。
 """
 
@@ -61,7 +61,8 @@ def to_number(value):
     - 去货币符号与币种代码：¥1,234.50 / USD 12.3
     - 百分号转小数：15% -> 0.15
     - 中文数量级：1.2万 -> 12000
-    - 千分位与欧式小数：1,234.5 -> 1234.5；1.234,56 -> 1234.56
+    - 千分位与欧式小数：1,234.5 -> 1234.5；1.234,56 -> 1234.56；10,84 -> 10.84（逗号后 1-2 位按小数点
+      处理，逗号后 3 位按千分位处理）
     - 负号与括号负数：(123) -> -123
     """
     if value is None:
@@ -99,10 +100,11 @@ def to_number(value):
             text = text.replace(",", "")
     elif text.count(","):
         parts = text.split(",")
-        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
-            text = "".join(parts)
+        tail = parts[-1]
+        if tail and len(tail) <= 2 and all(len(p) == 3 for p in parts[1:-1]):
+            text = "".join(parts[:-1]) + "." + tail
         else:
-            text = text.replace(",", ".", text.count(",") - 1)
+            text = "".join(parts)
     text = re.sub(r"[^0-9eE.\-]", "", text)
     if not text or text in {"-", ".", "e"}:
         return None
@@ -378,6 +380,16 @@ ALIASES = {
     "fulfillment_fee": ["履约费", "派送费", "配送费", "物流费", "fulfillmentfee", "shippingfee", "尾程费"],
     "fba_fee": ["fba费", "fbafee", "fba配送费", "仓储配送费"],
     "storage_fee": ["仓储费", "storagefee", "月度仓储费"],
+    "weight": ["重量", "单件重量", "毛重", "净重", "重量kg", "重量lb", "weight", "productweight",
+               "itemweight", "shippingweight", "商品重量"],
+    "box_qty": ["箱规", "装箱数", "每箱数量", "每箱装数量", "箱装数量", "boxqty", "pcsperbox", "qtyperbox"],
+    "freight": ["运费", "运费usd", "物流运费", "国际运费", "头程运费", "尾程运费", "freight",
+                "freightusd", "estfreight", "预估运费"],
+    "weight_min": ["重量下限", "起始重量", "区间下限", "weightfrom", "weightmin"],
+    "weight_max": ["重量上限", "结束重量", "区间上限", "weightto", "weightmax"],
+    "weight_band": ["重量区间", "重量段", "weightband", "weightrange", "重量区间lb", "重量区间kg"],
+    "wholesale_price": ["批发价", "批发售价", "批发单价", "wholesaleprice", "b2bprice"],
+    "free_shipping_threshold": ["免邮门槛", "包邮门槛", "免邮起价", "freeshippingthreshold", "包邮起价"],
     "tax_rate": ["税率", "vat", "vat税率", "taxrate", "税费率", "gst"],
     "price_min": ["价格下限", "最低价", "pricemin", "pricefrom", "起始价"],
     "price_max": ["价格上限", "最高价", "pricemax", "priceto", "结束价"],
