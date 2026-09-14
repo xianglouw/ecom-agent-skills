@@ -8,17 +8,22 @@
 
 做的事：把「产品定义 + 投放市场」与市场风格库、钩子模板库做笛卡尔组合，产出
 逐镜头的分镜脚本、可直接粘给视频模型（Seedance / Veo / 即梦等）的生成提示词，
-并对每个素材跑一遍前三秒留存硬性检查。
+并对每个素材跑一遍前三秒留存硬性检查。语种无关：西语、葡语、英语、越南语、
+日语、泰语、韩语、印尼语、德语、阿拉伯语等走同一套流程，语速按目标语种的
+计量单位折算，不写死某个市场。
 
 产品表字段：sku、product_name、site（投放市场）、category、audience、selling_points、
-proof、offer、price、currency；语种缺省从市场风格库取。
-市场风格库字段：site、language、platforms、rhythm、visual_style、talent、scene、tone、avoid、source、as_of。
+proof、offer、price、currency、language（语种，可留空从风格库取）。
+市场风格库字段：site、language、platforms、rhythm、visual_style、talent、scene、tone、
+avoid、speech_rate（该市场语速上限，覆盖内置表）、source、as_of。
 钩子模板库字段：hook_code、hook_name、desc、first_frame、line_template、caption_template、retention_note。
 禁用词表字段：word、reason、scope、level。
 
 只读输入，只写 --out/--out-json/--out-md/--quarantine 指定文件。
 不编造地区风格——市场风格库里查不到的站点一律标 high flag，不套用别的市场习惯；
 文案里需要创意填空的位置写成 {{待填:字段}} 显式暴露，不猜。
+语速上限是广告口播的经验值（比自然语速慢约 10–20%），可用 --speech-rate 或风格库
+的「语速上限」列覆盖，最终以目标语种实际配音试听为准。
 """
 
 import argparse
@@ -32,14 +37,15 @@ from sheetio import clean_text, to_number
 PRODUCT_FIELDS = ["sku", "product_name", "site", "category", "audience", "selling_points",
                   "proof", "offer", "price", "currency", "language"]
 STYLE_FIELDS = ["site", "language", "platforms", "rhythm", "visual_style", "talent", "scene",
-                "tone", "avoid", "source", "as_of"]
+                "tone", "avoid", "speech_rate", "source", "as_of"]
 HOOK_FIELDS = ["hook_code", "hook_name", "desc", "first_frame", "line_template",
                "caption_template", "retention_note"]
 BANNED_FIELDS = ["word", "reason", "scope", "level"]
 
 EXPORT_HEADERS = ["asset_name", "sku", "product_name", "site", "language", "ratio", "duration_s",
                   "hook_code", "hook_name", "shot_index", "timecode", "shot_seconds", "shot_type",
-                  "visual_prompt", "caption", "voiceover", "retention_note", "placeholders", "note"]
+                  "visual_prompt", "caption", "voiceover", "retention_note", "localize_to",
+                  "speech_budget", "placeholders", "note"]
 
 # 分镜骨架：每种成片时长一套，第一镜固定 3 秒（前三秒法则）
 SHOT_TEMPLATES = {
@@ -48,9 +54,191 @@ SHOT_TEMPLATES = {
     30: [("钩子", 3), ("痛点场景", 7), ("产品演示", 8), ("证明", 7), ("CTA", 5)],
 }
 
-# 口播语速上限（每秒可讲完的字/词数）——经验值，随语种与主播语速浮动，可在此调整
-SPEECH_UNITS_PER_SEC = {"zh": 4.5, "en": 2.6, "es": 2.8, "pt": 2.8, "fr": 2.6, "de": 2.4}
-DEFAULT_SPEECH_RATE = 2.8
+# 语种代码归一：兼容 BCP-47 变体（vi-VN、ja-JP）、中文名与常见写法
+LANGUAGE_ALIASES = {
+    "zh": ["zh", "cn", "chs", "zhcn", "zhhans", "zhhant", "zt", "中文", "简体", "简体中文", "繁体",
+           "繁体中文", "chinese", "mandarin", "普通话", "华语"],
+    "en": ["en", "eng", "english", "英语", "英文", "enus", "engb", "enau", "engg"],
+    "es": ["es", "spa", "esp", "spanish", "西班牙语", "西语", "esmx", "esar", "esco", "escl", "espe"],
+    "pt": ["pt", "por", "portuguese", "葡萄牙语", "葡语", "ptbr", "ptpt"],
+    "vi": ["vi", "vn", "vie", "vietnamese", "越南语", "越语", "vivn"],
+    "ja": ["ja", "jp", "jpn", "japanese", "日语", "日文", "jajp"],
+    "ko": ["ko", "kr", "kor", "korean", "韩语", "韩文", "朝鲜语", "kokr"],
+    "th": ["th", "tha", "thai", "泰语", "泰文", "thth"],
+    "id": ["id", "ind", "indonesian", "印尼语", "印度尼西亚语", "idid", "bahasa"],
+    "ms": ["ms", "msa", "malay", "马来语", "马来西亚语"],
+    "tl": ["tl", "fil", "filipino", "tagalog", "菲律宾语", "他加禄语"],
+    "km": ["km", "khm", "khmer", "柬埔寨语", "高棉语"],
+    "lo": ["lo", "lao", "老挝语", "寮语"],
+    "my": ["my", "mya", "burmese", "缅甸语"],
+    "hi": ["hi", "hin", "hindi", "印地语", "北印度语"],
+    "bn": ["bn", "ben", "bengali", "孟加拉语"],
+    "ta": ["ta", "tam", "tamil", "泰米尔语"],
+    "ur": ["ur", "urd", "urdu", "乌尔都语"],
+    "ar": ["ar", "ara", "arabic", "阿拉伯语", "阿语", "arsa", "arae"],
+    "he": ["he", "iw", "heb", "hebrew", "希伯来语"],
+    "fa": ["fa", "per", "persian", "farsi", "波斯语"],
+    "tr": ["tr", "tur", "turkish", "土耳其语"],
+    "ru": ["ru", "rus", "russian", "俄语", "ruRU"],
+    "uk": ["uk", "ukr", "ukrainian", "乌克兰语"],
+    "de": ["de", "deu", "ger", "german", "德语", "dede", "deat"],
+    "fr": ["fr", "fra", "fre", "french", "法语", "frfr", "frca"],
+    "it": ["it", "ita", "italian", "意大利语"],
+    "nl": ["nl", "nld", "dut", "dutch", "荷兰语"],
+    "pl": ["pl", "pol", "polish", "波兰语"],
+    "cs": ["cs", "ces", "czech", "捷克语"],
+    "sk": ["sk", "slk", "slovak", "斯洛伐克语"],
+    "hu": ["hu", "hun", "hungarian", "匈牙利语"],
+    "ro": ["ro", "ron", "romanian", "罗马尼亚语"],
+    "bg": ["bg", "bul", "bulgarian", "保加利亚语"],
+    "el": ["el", "ell", "greek", "希腊语"],
+    "sv": ["sv", "swe", "swedish", "瑞典语"],
+    "da": ["da", "dan", "danish", "丹麦语"],
+    "nb": ["nb", "no", "nor", "norwegian", "挪威语"],
+    "fi": ["fi", "fin", "finnish", "芬兰语"],
+    "hr": ["hr", "hrv", "croatian", "克罗地亚语"],
+    "sr": ["sr", "srp", "serbian", "塞尔维亚语"],
+    "lt": ["lt", "lit", "lithuanian", "立陶宛语"],
+    "lv": ["lv", "lav", "latvian", "拉脱维亚语"],
+    "et": ["et", "est", "estonian", "爱沙尼亚语"],
+    "sl": ["sl", "slv", "slovenian", "斯洛文尼亚语"],
+    "sw": ["sw", "swa", "swahili", "斯瓦希里语"],
+    "az": ["az", "aze", "azerbaijani", "阿塞拜疆语"],
+    "kk": ["kk", "kaz", "kazakh", "哈萨克语"],
+    "uz": ["uz", "uzb", "uzbek", "乌兹别克语"],
+    "ka": ["ka", "kat", "georgian", "格鲁吉亚语"],
+    "hy": ["hy", "hye", "armenian", "亚美尼亚语"],
+    "ne": ["ne", "nep", "nepali", "尼泊尔语"],
+    "si": ["si", "sin", "sinhala", "僧伽罗语"],
+}
+# 补充写法，两类：
+#   1. 原生语言写法——平台后台的语种下拉框、当地团队的反馈里最常见（「Tiếng Việt」「日本語」「ภาษาไทย」
+#      「العربية」），按原样收录；多词写法同时收录连写形式，防止少了空格就认不出
+#   2. 中文简称——团队口头与文档里常用的「X文」写法（越南文、阿拉伯文、俄文…）
+LANGUAGE_EXTRA_ALIASES = {
+    "zh": ["汉语", "國語", "国语"],
+    "es": ["español", "espanol", "castellano", "西班牙文"],
+    "pt": ["português", "portugues", "葡萄牙文"],
+    "vi": ["tiếng việt", "tiếngviệt", "tieng viet", "tiengviet", "越南文"],
+    "ja": ["日本語", "にほんご", "nihongo"],
+    "ko": ["한국어", "한국말", "조선어"],
+    "th": ["ภาษาไทย", "ไทย", "phasa thai"],
+    "id": ["bahasa indonesia", "bahasaindonesia", "indonesia", "印尼文"],
+    "ms": ["bahasa melayu", "bahasamelayu", "melayu", "马来文"],
+    "tl": ["wikang filipino", "pilipino"],
+    "km": ["ភាសាខ្មែរ", "ខ្មែរ", "高棉文", "柬埔寨文"],
+    "lo": ["ພາສາລາວ", "ລາວ", "老挝文", "寮文"],
+    "my": ["မြန်မာဘာသာ", "မြန်မာ", "缅甸文"],
+    "hi": ["हिन्दी", "हिंदी", "印地文"],
+    "bn": ["বাংলা", "孟加拉文"],
+    "ta": ["தமிழ்", "泰米尔文"],
+    "ur": ["اردو", "乌尔都文"],
+    "ar": ["العربية", "عربي", "阿拉伯文"],
+    "he": ["עברית", "希伯来文"],
+    "fa": ["فارسی", "波斯文"],
+    "tr": ["türkçe", "turkce", "土耳其文"],
+    "ru": ["русский", "俄文"],
+    "uk": ["українська", "乌克兰文"],
+    "de": ["deutsch", "德文"],
+    "fr": ["français", "francais", "法文"],
+    "it": ["italiano", "意大利文"],
+    "nl": ["nederlands", "荷兰文"],
+    "pl": ["polski", "波兰文"],
+    "cs": ["čeština", "cestina", "捷克文"],
+    "sk": ["slovenčina", "slovencina", "斯洛伐克文"],
+    "hu": ["magyar", "匈牙利文"],
+    "ro": ["română", "romana", "罗马尼亚文"],
+    "bg": ["български", "保加利亚文"],
+    "el": ["ελληνικά", "ellinika", "希腊文"],
+    "sv": ["svenska", "瑞典文"],
+    "da": ["dansk", "丹麦文"],
+    "nb": ["norsk", "挪威文"],
+    "fi": ["suomi", "芬兰文"],
+    "hr": ["hrvatski", "克罗地亚文"],
+    "sr": ["српски", "塞尔维亚文"],
+    "lt": ["lietuvių", "lietuviu", "立陶宛文"],
+    "lv": ["latviešu", "latviesu", "拉脱维亚文"],
+    "et": ["eesti", "爱沙尼亚文"],
+    "sl": ["slovenščina", "slovenscina", "斯洛文尼亚文"],
+    "sw": ["kiswahili", "斯瓦希里文"],
+    "az": ["azərbaycan", "azerbaijan", "阿塞拜疆文"],
+    "kk": ["қазақша", "哈萨克文"],
+    "uz": ["oʻzbek", "ozbek", "乌兹别克文"],
+    "ka": ["ქართული", "格鲁吉亚文"],
+    "hy": ["հայերեն", "亚美尼亚文"],
+    "ne": ["नेपाली", "尼泊尔文"],
+    "si": ["සිංහල", "僧伽罗文"],
+}
+LANGUAGE_INDEX = {alias.lower(): code
+                  for code, names in LANGUAGE_ALIASES.items()
+                  for alias in names + LANGUAGE_EXTRA_ALIASES.get(code, [])}
+
+# 语种中文名（用于报告文案，查不到就直接用代码）
+LANGUAGE_NAMES = {
+    "zh": "中文", "en": "英语", "es": "西语", "pt": "葡语", "vi": "越南语", "ja": "日语",
+    "ko": "韩语", "th": "泰语", "id": "印尼语", "ms": "马来语", "tl": "菲律宾语", "km": "高棉语",
+    "lo": "老挝语", "my": "缅甸语", "hi": "印地语", "bn": "孟加拉语", "ta": "泰米尔语",
+    "ur": "乌尔都语", "ar": "阿拉伯语", "he": "希伯来语", "fa": "波斯语", "tr": "土耳其语",
+    "ru": "俄语", "uk": "乌克兰语", "de": "德语", "fr": "法语", "it": "意大利语", "nl": "荷兰语",
+    "pl": "波兰语", "cs": "捷克语", "sk": "斯洛伐克语", "hu": "匈牙利语", "ro": "罗马尼亚语",
+    "bg": "保加利亚语", "el": "希腊语", "sv": "瑞典语", "da": "丹麦语", "nb": "挪威语",
+    "fi": "芬兰语", "hr": "克罗地亚语", "sr": "塞尔维亚语", "lt": "立陶宛语", "lv": "拉脱维亚语",
+    "et": "爱沙尼亚语", "sl": "斯洛文尼亚语", "sw": "斯瓦希里语", "az": "阿塞拜疆语",
+    "kk": "哈萨克语", "uz": "乌兹别克语", "ka": "格鲁吉亚语", "hy": "亚美尼亚语",
+    "ne": "尼泊尔语", "si": "僧伽罗语",
+}
+
+# 语种 → (计量单位, 广告口播每秒上限)
+# 单位 char＝按字符计（中文/日文/韩文/泰文/高棉文/老挝文/缅甸文等不用空格分词的语言）；
+#      word＝按空格分词计（英语/西语/葡语/越南语/印尼语/阿拉伯语等）。
+# 数值是**广告口播的经验上限**（比日常自然语速慢约 10–20%），随语种、主播、品类、平台浮动，
+# 属可调配置：命令行 --speech-rate 优先级最高，其次市场风格库的「语速上限」列，最后才是这张表。
+# 最终以目标语种实际配音试听为准，不要把它当成语言学结论。
+LANGUAGE_SPEECH = {
+    "zh": ("char", 4.5), "ja": ("char", 5.5), "ko": ("char", 5.0), "th": ("char", 4.5),
+    "km": ("char", 4.0), "lo": ("char", 4.0), "my": ("char", 3.5),
+    "en": ("word", 2.6), "es": ("word", 3.0), "pt": ("word", 2.8), "vi": ("word", 3.5),
+    "id": ("word", 2.8), "ms": ("word", 2.8), "tl": ("word", 2.8),
+    "fr": ("word", 2.8), "it": ("word", 2.9), "de": ("word", 2.4), "nl": ("word", 2.6),
+    "pl": ("word", 2.4), "cs": ("word", 2.4), "sk": ("word", 2.4), "hu": ("word", 2.4),
+    "ro": ("word", 2.5), "bg": ("word", 2.5), "hr": ("word", 2.4), "sr": ("word", 2.4),
+    "sl": ("word", 2.4), "lt": ("word", 2.3), "lv": ("word", 2.3), "et": ("word", 2.2),
+    "sv": ("word", 2.6), "da": ("word", 2.6), "nb": ("word", 2.6), "fi": ("word", 2.2),
+    "ru": ("word", 2.2), "uk": ("word", 2.2), "tr": ("word", 2.2), "el": ("word", 2.3),
+    "ar": ("word", 2.4), "he": ("word", 2.4), "fa": ("word", 2.4), "ur": ("word", 2.4),
+    "hi": ("word", 2.6), "bn": ("word", 2.4), "ta": ("word", 2.4), "ne": ("word", 2.4),
+    "si": ("word", 2.2), "sw": ("word", 2.4), "az": ("word", 2.3), "kk": ("word", 2.2),
+    "uz": ("word", 2.4), "ka": ("word", 2.4), "hy": ("word", 2.4),
+}
+FALLBACK_SPEECH = ("word", 2.6)
+UNIT_LABELS = {"char": "字符", "word": "词"}
+
+# 目标语种 → 该语种正文必然出现的书写系统，用来判断文案是否已经本地化
+NON_LATIN_TARGETS = {
+    "zh": "han", "ja": "kana", "ko": "hangul", "th": "thai", "km": "khmer", "lo": "lao",
+    "my": "myanmar", "ar": "arabic", "he": "hebrew", "fa": "arabic", "ur": "arabic",
+    "hi": "devanagari", "bn": "bengali", "ta": "tamil", "ne": "devanagari", "si": "sinhala",
+    "ru": "cyrillic", "uk": "cyrillic", "bg": "cyrillic", "el": "greek",
+}
+SCRIPT_RANGES = {
+    "han": [(0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF)],
+    "kana": [(0x3040, 0x30FF), (0x31F0, 0x31FF)],
+    "hangul": [(0x1100, 0x11FF), (0x3130, 0x318F), (0xAC00, 0xD7AF)],
+    "thai": [(0x0E00, 0x0E7F)], "lao": [(0x0E80, 0x0EFF)],
+    "khmer": [(0x1780, 0x17FF)], "myanmar": [(0x1000, 0x109F)],
+    "arabic": [(0x0600, 0x06FF), (0x0750, 0x077F), (0xFB50, 0xFDFF), (0xFE70, 0xFEFF)],
+    "hebrew": [(0x0590, 0x05FF)], "cyrillic": [(0x0400, 0x04FF)],
+    "greek": [(0x0370, 0x03FF)], "devanagari": [(0x0900, 0x097F)],
+    "bengali": [(0x0980, 0x09FF)], "tamil": [(0x0B80, 0x0BFF)],
+    "sinhala": [(0x0D80, 0x0DFF)],
+}
+
+DEFAULT_WORKING_LANGUAGE = "zh"   # 钩子模板库与分镜文案的工作语言
+PLACEHOLDER_WEIGHT = 2            # 口播长度测算时，每个 {{待填:}} 记作几个单位
+CAPTION_CHAR_LIMIT = 20           # 前 3 秒字幕单行可容纳的全角字符数（经验值，--caption-limit 可调）
+
+# 标点不参与口播长度计算
+PUNCT_PATTERN = re.compile(r"[\s，。、；：！？…—～·「」『』（）【】《》〈〉“”‘’\"'.,;:!?()\[\]{}]")
 
 # 前 3 秒禁止出现的开场方式（用户划走最快的位置就是这几类）
 BANNED_OPENINGS = ["logo", "片头", "黑屏", "空镜", "慢镜头", "慢动作", "标题动画", "静态产品图", "白底图"]
@@ -60,7 +248,11 @@ CHECKS = {
     "retention_first_frame": ("high", "前 3 秒首帧要求缺失或用了高划走率的开场方式"),
     "retention_caption": ("high", "前 3 秒没有可读字幕，静音刷到的用户看不懂"),
     "retention_speech": ("medium", "前 3 秒口播超出该语种语速上限，讲不完"),
-    "retention_localization": ("low", "前 3 秒文案仍是工作语言草稿，按投放市场语种本地化后需复测时长"),
+    "retention_localization": ("low", "前 3 秒文案仍是工作语言草稿，按目标语种本地化后需复测时长"),
+    "caption_too_long": ("medium", "前 3 秒字幕超过单行可显示长度，手机上会折行或被裁掉"),
+    "language_conflict": ("medium", "产品表语种与市场风格库语种不一致，配音与字幕会做错语种"),
+    "language_unrecognized": ("medium", "语种写得不认识，语速按保守默认值折算"),
+    "language_missing": ("medium", "没写目标语种，无法判断本地化与语速基线"),
     "retention_action": ("medium", "首帧只有静态描述，前 3 秒缺少动作或画面变化"),
     "retention_hookline": ("high", "前 3 秒的文案全是待填位，没有可直接生成的钩子内容"),
     "selling_points_missing": ("high", "没有卖点，钩子与分镜无从生成"),
@@ -81,6 +273,7 @@ ACTION_WORDS = ["拿", "放", "倒", "撕", "拆", "打开", "跑", "走", "转"
                 "举起", "合上", "装", "拆开", "塞", "取", "摆", "拧", "卷", "折", "撕开", "倒出",
                 "擦拭", "递", "接", "指向", "触摸", "摇", "甩", "提", "戴好", "放下", "换上",
                 "手持", "手势", "操作", "对准", "拎", "握", "递出", "翻找", "拍下", "摆出",
+                "跟拍", "跟随", "跟着", "环绕", "摇镜", "推近", "拉远",
                 "open", "pour", "cut", "drop", "grab", "walk", "run", "turn", "hold", "lift", "show",
                 "test", "try", "spin", "snap", "peel", "click", "tap", "swap", "install", "unbox"]
 TEMPLATE_PATTERN = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
@@ -91,17 +284,95 @@ def split_points(text):
     return [piece for piece in re.split(r"[|｜;；、/]", clean_text(text)) if piece]
 
 
-def speech_cap(language, seconds):
-    """3 秒能讲完的字数/词数上限。"""
-    rate = SPEECH_UNITS_PER_SEC.get((language or "zh").lower(), DEFAULT_SPEECH_RATE)
+def normalize_language(value):
+    """把语种写法归一到短代码：'ja-JP'/'日语'/'JP' → 'ja'；识别不了返回空串。"""
+    raw = clean_text(value).lower()
+    if not raw:
+        return ""
+    for candidate in (raw, raw.replace("-", "").replace("_", "").replace(" ", ""),
+                      raw.split("-")[0].split("_")[0]):
+        if candidate and candidate in LANGUAGE_INDEX:
+            return LANGUAGE_INDEX[candidate]
+    return ""
+
+
+def language_label(code):
+    return LANGUAGE_NAMES.get(code, code or "未指定")
+
+
+def parse_rate_overrides(text):
+    """解析 --speech-rate vi=3.5,ja=6 —— 返回 {语种代码: 每秒上限}。"""
+    overrides = {}
+    for piece in (text or "").replace("，", ",").split(","):
+        piece = piece.strip()
+        if "=" not in piece:
+            continue
+        key, _, value = piece.partition("=")
+        number = to_number(value)
+        code = normalize_language(key)
+        if code and number is not None and number > 0:
+            overrides[code] = float(number)
+    return overrides
+
+
+def speech_profile(language, overrides=None, market_rate=None):
+    """返回 (语种代码, 计量单位, 每秒上限)。优先级：命令行 > 风格库语速列 > 内置表。"""
+    code = normalize_language(language)
+    unit, rate = LANGUAGE_SPEECH.get(code, FALLBACK_SPEECH)
+    if market_rate:
+        rate = float(market_rate)
+    if code and code in (overrides or {}):
+        rate = float(overrides[code])
+    return code, unit, rate
+
+
+def speech_cap(rate, seconds):
+    """seconds 秒内能讲完的单位数上限。"""
     return max(1, int(rate * seconds))
 
 
-def speech_units(text, language):
-    """按语种计量口播长度：中文数字，其他语种数词（空格分词）。"""
-    if (language or "zh").lower() == "zh" or has_cjk(text):
-        return len(re.sub(r"\s", "", text or ""))
-    return len([word for word in re.split(r"\s+", (text or "").strip()) if word])
+def speech_units(text, unit):
+    """按计量单位数口播长度；{{待填:}} 记作 PLACEHOLDER_WEIGHT 个单位（会被真实内容替换，不能当 0）。"""
+    text = text or ""
+    placeholders = len(PLACEHOLDER_PATTERN.findall(text))
+    body = PLACEHOLDER_PATTERN.sub(" ", text)
+    if unit == "char":
+        counted = len(PUNCT_PATTERN.sub("", body))
+    else:
+        counted = len([word for word in re.split(r"\s+", PUNCT_PATTERN.sub(" ", body).strip()) if word])
+    return counted + placeholders * PLACEHOLDER_WEIGHT
+
+
+def script_of(text):
+    """返回文案里出现的书写系统集合——只用来判断「换没换语种」，不判断语义。"""
+    found = set()
+    for char in text or "":
+        point = ord(char)
+        for script, ranges in SCRIPT_RANGES.items():
+            if script in found:
+                continue
+            if any(low <= point <= high for low, high in ranges):
+                found.add(script)
+                break
+    if re.search(r"[A-Za-z]", text or ""):
+        found.add("latin")
+    return found
+
+
+def looks_localized(text, target_language):
+    """文案看起来已经换成目标语种了吗？只看书写系统，判不了语义与用词是否地道。"""
+    scripts = script_of(text)
+    required = NON_LATIN_TARGETS.get(target_language or "")
+    if required:
+        return required in scripts
+    return "latin" in scripts and "han" not in scripts
+
+
+def caption_units(text):
+    """字幕占几个全角字符位：全角算 1，半角算 0.5；{{待填:}} 不计（内容未定）。"""
+    body = PLACEHOLDER_PATTERN.sub("", text or "")
+    return round(sum(1.0 if ord(char) > 0x2E80 else 0.5
+                     for char in body if not char.isspace()), 1)
 
 
 def timecode(start, length):
@@ -116,11 +387,6 @@ def render(template, mapping):
         return str(value) if value not in (None, "") else "{{待填:" + key + "}}"
 
     return TEMPLATE_PATTERN.sub(substitute, clean_text(template))
-
-
-def has_cjk(text):
-    """文案里有没有中文字符——用来区分「工作语言草稿」与「已本地化文案」。"""
-    return bool(re.search(r"[\u4e00-\u9fff]", text or ""))
 
 
 def count_placeholders(text):
@@ -329,8 +595,36 @@ def build_shot_rows(product, style, hook, duration):
     return rows
 
 
-def check_asset(product, style, hook, rows, banned, action_words=None):
-    """跑前三秒法则与素材完整性检查，返回问题列表 [(check, detail)]。"""
+def resolve_target_language(product_language, style_language):
+    """定目标语种：产品表优先，取不到再落风格库；同时收集语言字段本身的问题。"""
+    issues = []
+    declared = normalize_language(product_language)
+    from_style = normalize_language(style_language)
+    if product_language and not declared:
+        issues.append(("language_unrecognized", f"产品表语种「{product_language}」不在已知语种表里"))
+    if style_language and not from_style:
+        issues.append(("language_unrecognized", f"风格库语种「{style_language}」不在已知语种表里"))
+    if declared and from_style and declared != from_style:
+        issues.append(("language_conflict",
+                       f"产品表写 {declared}（{language_label(declared)}），"
+                       f"风格库写 {from_style}（{language_label(from_style)}）"))
+    target = declared or from_style
+    if not target:
+        if product_language or style_language:
+            issues.append(("language_missing", "语种字段没有可识别的值，本地化与语速基线都无法确定"))
+        else:
+            issues.append(("language_missing", "产品表与市场风格库都没给语种"))
+    return target, issues
+
+
+def check_asset(product, style, hook, rows, banned, action_words=None, options=None):
+    """跑前三秒法则与素材完整性检查，返回 (问题列表, 待填数, 语速预算信息)。"""
+    options = options or {}
+    working = options.get("working_language") or DEFAULT_WORKING_LANGUAGE
+    overrides = options.get("speech_overrides") or {}
+    caption_limit = options.get("caption_limit", CAPTION_CHAR_LIMIT)
+    market_rate = to_number(style.get("speech_rate"))
+
     issues = []
     hook_shot = rows[0]
     first_frame = hook["first_frame"]
@@ -340,7 +634,22 @@ def check_asset(product, style, hook, rows, banned, action_words=None):
     elif not contains_action(first_frame, action_words):
         issues.append(("retention_action", f"首帧只有静态描述：{first_frame}"))
 
-    language = (product["language"] or style.get("language") or "").lower()
+    target, language_issues = resolve_target_language(product["language"], style.get("language"))
+    issues += language_issues
+
+    # 目标语种的前 3 秒口播预算（本地化后的硬指标）
+    _, budget_unit, budget_rate = speech_profile(target or working, overrides, market_rate)
+    budget = {
+        "target": target,
+        "target_label": language_label(target) if target else "待确认",
+        "code": target or "",
+        # 目标语种没定下来时，这份预算只是按工作语言给出的占位值，不能当成目标语种口径
+        "provisional": not target,
+        "unit": UNIT_LABELS[budget_unit],
+        "cap": speech_cap(budget_rate, 3),
+    }
+    budget["text"] = f"≤{budget['cap']} {budget['unit']}/3s"
+
     caption_ok = has_real_content(hook_shot["caption"])
     voice_ok = has_real_content(hook_shot["voiceover"])
     if not caption_ok and not voice_ok:
@@ -348,20 +657,35 @@ def check_asset(product, style, hook, rows, banned, action_words=None):
     else:
         if not caption_ok:
             issues.append(("retention_caption", "前 3 秒没有可读字幕，静音刷到的用户看不懂"))
+        elif caption_units(hook_shot["caption"]) > caption_limit:
+            issues.append(("caption_too_long",
+                           f"前 3 秒字幕约 {caption_units(hook_shot['caption'])} 个全角字位，"
+                           f"超过单行 {caption_limit} 字预算"))
         if voice_ok:
             copy_text = hook_shot["voiceover"] + hook_shot["caption"]
-            copy_language = "zh" if has_cjk(copy_text) else (language or "zh")
-            cap = speech_cap(copy_language, 3)
-            spoken = speech_units(hook_shot["voiceover"], copy_language)
+            localized = looks_localized(copy_text, target)
+            # 草稿按工作语言的语速与单位预检；已本地化才用目标语种（含风格库语速覆盖）
+            copying_target = localized or (target or working) == working
+            copy_code, copy_unit, copy_rate = speech_profile(
+                (target or working) if copying_target else working, overrides,
+                market_rate if copying_target else None)
+            cap = speech_cap(copy_rate, 3)
+            spoken = speech_units(hook_shot["voiceover"], copy_unit)
             if spoken > cap:
-                suffix = "（当前为中文草稿，本地化后需按目标语种重新配词）" if copy_language == "zh" else ""
-                unit = "字" if copy_language == "zh" else "词"
+                unit_label = UNIT_LABELS[copy_unit]
+                if localized:
+                    detail = (f"前 3 秒口播 {spoken} {unit_label}，超过"
+                              f"{language_label(copy_code)}语速上限 {cap} {unit_label}/3s")
+                else:
+                    detail = (f"前 3 秒口播 {spoken} {unit_label}，按{language_label(copy_code)}"
+                              f"语速上限 {cap} {unit_label}/3s 预检已讲不完；"
+                              f"本地化到{budget['target_label']}后按预算 {budget['text']} 重写再复测")
                 issues.append(("retention_speech",
-                               f"前 3 秒口播 {spoken} {unit}，超过 {copy_language} 语速上限 "
-                               f"{cap} {unit}/3s{suffix}"))
-            if copy_language == "zh" and language and language != "zh":
+                               detail + (f"（当前是{language_label(working)}草稿）" if not localized else "")))
+            if not localized and target and target != working:
                 issues.append(("retention_localization",
-                               f"文案为中文草稿，需按 {language} 重写并复测前 3 秒时长"))
+                               f"文案为{language_label(working)}草稿，需按{language_label(target)}"
+                               f"（{target}）重写，前 3 秒口播预算 {budget['text']}"))
 
     points = split_points(product["selling_points"])
     if not points:
@@ -387,10 +711,11 @@ def check_asset(product, style, hook, rows, banned, action_words=None):
                        + count_placeholders(row["voiceover"]) for row in rows)
     if placeholders:
         issues.append(("brief_incomplete", f"{placeholders} 处创意位待填"))
-    return issues, placeholders
+
+    return issues, placeholders, budget
 
 
-def build_model_prompt(product, style, hook, rows, ratio, duration):
+def build_model_prompt(product, style, hook, rows, ratio, duration, budget):
     """拼出可直接粘给视频模型的生成提示词（由结构化字段拼装，不含编造内容）。"""
     shots = "；".join(f"{row['timecode']}（{row['shot_type']}）{row['visual_prompt']}" for row in rows)
     captions = " / ".join(f"{row['timecode']} {row['caption']}" for row in rows)
@@ -400,6 +725,9 @@ def build_model_prompt(product, style, hook, rows, ratio, duration):
         f"【风格】{style.get('visual_style') or '{{待填:画面风格}}'}；{style.get('tone') or '{{待填:话术调性}}'}；"
         f"{style.get('rhythm') or '{{待填:剪辑节奏}}'}；出镜：{style.get('talent') or '{{待填:出镜者}}'}",
         f"【规格】{duration}s，{ratio}，竖版优先；字幕全程常驻，静音可读",
+        f"【语言】目标语种 {budget['target_label']}"
+        + (f"（{budget['code']}）" if budget["code"] else "（语种待确认，先按下面的占位预算写，确认后重算）")
+        + f"；字幕、口播、配音全部用目标语种，交付前按本地语速复测前 3 秒（口播预算 {budget['text']}）",
         f"【分镜】{shots}",
         f"【字幕】{captions}",
         f"【钩子】{hook['hook_name'] or hook['hook_code']}：{hook['desc']}"
@@ -418,20 +746,55 @@ def build_markdown(data, args, detail_count):
                  + " → ".join(f"{shot}（{sec}s）" for shot, sec in SHOT_TEMPLATES[args.duration]))
     lines.append("- 口径：文案中 {{待填:字段}} 是刻意留出的创意位，由模型或人工补齐后再进生成队列；"
                  "本表不编造地区人群习惯，风格一律取自市场风格库")
+    target_list = "、".join(f"{language_label(code)}（{code}）" for code in data["languages"]) or "未指定"
+    lines.append(f"- 语种：工作语言 {language_label(data.get('working_language', DEFAULT_WORKING_LANGUAGE))}；"
+                 f"目标语种 {target_list}；语速上限取自语种表，可由风格库「语速上限」列或 "
+                 f"--speech-rate 覆盖")
     lines.append("")
 
     lines.append("## 素材总表")
     lines.append("")
-    lines.append("| 素材名 | 市场 | 语种 | 钩子 | 前 3 秒检查 | 提示 | 待填 |")
-    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("| 素材名 | 市场 | 目标语种 | 钩子 | 前 3 秒检查 | 提示 | 前 3 秒口播预算 | 待填 |")
+    lines.append("|---|---|---|---|---|---|---|---|")
     for asset in data["assets"]:
         status = "通过" if not asset["retention_blocking"] else "；".join(
             f"{CHECKS[key][1]}（{detail}）" if detail else CHECKS[key][1]
             for key, detail in asset["retention_blocking"])
         hint = "；".join(f"{CHECKS[key][1]}" for key, _ in asset["retention_notes"]) or "—"
-        lines.append(f"| {asset['asset_name']} | {asset['site']} | {asset['language'] or '—'} | "
+        lines.append(f"| {asset['asset_name']} | {asset['site']} | {asset['language_label']} | "
                      f"{asset['hook_code']} {asset['hook_name']} | {status} | {hint} | "
-                     f"{asset['placeholders']} |")
+                     f"{asset['speech_budget']} | {asset['placeholders']} |")
+    lines.append("")
+
+    lines.append("## 本地化与语速预算")
+    lines.append("")
+    lines.append(f"文案默认用工作语言（{language_label(data.get('working_language', DEFAULT_WORKING_LANGUAGE))}）"
+                 "写成草稿，语速预检也按工作语言跑一遍；本地化到目标语种后，"
+                 "口播长度必须按下面这个预算复测——超了就得砍词，不是调语速。")
+    lines.append("")
+    lines.append("| 市场 | 目标语种 | 素材数 | 前 3 秒口播预算 | 字幕单行上限 |")
+    lines.append("|---|---|---|---|---|")
+    for entry in data["speech_rates"]:
+        count = sum(1 for asset in data["assets"]
+                    if asset["site"] == entry["site"] and asset["language"] == entry["language"])
+        if entry["language"]:
+            language_cell = f"{language_label(entry['language'])}（{entry['language']}）"
+        else:
+            language_cell = "待确认"
+        budget_cell = entry["budget"]
+        if entry.get("provisional"):
+            budget_cell += f"（暂按{language_label(data.get('working_language', DEFAULT_WORKING_LANGUAGE))}预检）"
+        lines.append(f"| {entry['site']} | {language_cell} | "
+                     f"{count} | {budget_cell} | ≤ {args.caption_limit:g} 全角字 |")
+    lines.append("")
+    lines.append("本地化交付清单（逐项过一遍，缺一项就会在投放端露馅）：")
+    lines.append("")
+    lines.append("1. 前 3 秒钩子口播与字幕：按预算重写，删到讲得完为止，再复测时长。")
+    lines.append("2. 全片字幕与口播：用目标语种标点，数字与货币按当地写法（千分位、小数点、币种位置）。")
+    lines.append("3. 配音：优先目标市场本地口音，配音语种与字幕语种必须一致，不要出现英语配音配本地字幕。")
+    lines.append("4. 字幕排版：中文/日文/韩文/泰文断行规则与拉丁语不同，"
+                 "阿拉伯语/希伯来语为从右往左排版，字体要能显示目标语种字形。")
+    lines.append("5. 画面里的文字（包装、招牌、界面）：出现中文或英语会削弱本地感，能换就换成本地语言。")
     lines.append("")
 
     lines.append(f"## 分镜详情（前 {detail_count} 条素材）")
@@ -439,8 +802,15 @@ def build_markdown(data, args, detail_count):
     for asset in data["assets"][:detail_count]:
         lines.append(f"### {asset['asset_name']}")
         lines.append("")
-        lines.append(f"- 市场/语种：{asset['site']} / {asset['language'] or '未指定'}；"
-                     f"钩子：{asset['hook_code']} {asset['hook_name']}")
+        lines.append(f"- 市场/语种：{asset['site']} / {asset['language_label']}"
+                     + (f"（{asset['language']}）" if asset["language"] else "")
+                     + f"；钩子：{asset['hook_code']} {asset['hook_name']}")
+        budget_note = "（本地化后必须复测）"
+        if asset.get("language_provisional"):
+            budget_note = ("（语种未确认，这是按工作语言给的占位预算；"
+                           "补齐目标语种后重跑才知道真实上限）")
+        lines.append(f"- 本地化：目标语种 {asset['language_label']}；前 3 秒口播预算 "
+                     f"{asset['speech_budget']}{budget_note}")
         lines.append(f"- 前 3 秒检查："
                      + ("通过" if not asset["retention_blocking"] else "；".join(
                          f"{key}（{detail}）" if detail else key for key, detail in asset["retention_blocking"]))
@@ -486,6 +856,12 @@ def main(argv=None):
     parser.add_argument("--hooks-per-sku", type=int, default=2, help="每个 SKU×市场 生成几条钩子，默认 2")
     parser.add_argument("--markets", default="", help="只测算这些市场，逗号分隔，如 MX,BR")
     parser.add_argument("--top", type=int, default=5, help="Markdown 里展开详情的素材数，默认 5")
+    parser.add_argument("--working-language", default=DEFAULT_WORKING_LANGUAGE,
+                        help="钩子模板与分镜文案当前使用的工作语言，默认 zh；文案已按目标语种重写后可改这里")
+    parser.add_argument("--speech-rate", default="", metavar="语种=每秒上限",
+                        help="覆盖内置语速表，如 vi=3.5,ja=6 —— 优先级最高")
+    parser.add_argument("--caption-limit", type=float, default=CAPTION_CHAR_LIMIT,
+                        help=f"前 3 秒字幕单行可容纳的全角字符数，默认 {CAPTION_CHAR_LIMIT}")
     parser.add_argument("--out", default=None, help="输出分镜表 CSV")
     parser.add_argument("--out-json", default=None, help="输出结果信封 JSON")
     parser.add_argument("--out-md", default=None, help="输出 Markdown brief")
@@ -501,6 +877,18 @@ def main(argv=None):
     flags = []
     ratios = [piece.strip() for piece in args.ratio.replace("，", ",").split(",") if piece.strip()]
     only_markets = {piece.strip().upper() for piece in args.markets.replace("，", ",").split(",") if piece.strip()}
+    working_language = normalize_language(args.working_language) or DEFAULT_WORKING_LANGUAGE
+    speech_overrides = parse_rate_overrides(args.speech_rate)
+    check_options = {"working_language": working_language, "speech_overrides": speech_overrides,
+                     "caption_limit": args.caption_limit}
+    if args.speech_rate and not speech_overrides:
+        flags.append(sheetio.flag("medium", "speech_rate_ignored",
+                                  f"--speech-rate「{args.speech_rate}」没解析出任何有效项",
+                                  "写成「语种=每秒上限」的形式，例如 vi=3.5,ja=6"))
+    if args.working_language and not normalize_language(args.working_language):
+        flags.append(sheetio.flag("medium", "working_language_unrecognized",
+                                  f"--working-language「{args.working_language}」不在已知语种表里，按中文处理",
+                                  "改用 --working-language ja 这类语种代码"))
     if not ratios:
         sheetio.emit(sheetio.make_envelope("video_brief", "blocked", 0.0, {"error": "--ratio 为空"},
                                            [sheetio.flag("high", "input_error", "--ratio 为空", "写成 9:16 或 9:16,16:9")]),
@@ -569,12 +957,16 @@ def main(argv=None):
         for hook in pick_hooks(hooks, args.hooks_per_sku, row_ordinal * max(0, args.hooks_per_sku)):
             for ratio in ratios:
                 shot_rows = build_shot_rows(product, style, hook, args.duration)
-                issues, placeholders = check_asset(product, style, hook, shot_rows, banned, action_words)
-                language = product["language"] or style.get("language", "")
+                issues, placeholders, budget = check_asset(
+                    product, style, hook, shot_rows, banned, action_words, check_options)
+                language = budget["code"] or ""
                 asset_name = f"{sku}_{site}_{hook['hook_code']}_{ratio.replace(':', 'x')}_{args.duration}s_v1"
                 retention = [(key, detail) for key, detail in issues if key.startswith("retention_")]
                 asset = {
                     "asset_name": asset_name, "sku": sku, "site": site, "language": language,
+                    "language_label": budget["target_label"], "localize_to": budget["code"],
+                    "language_provisional": budget["provisional"],
+                    "speech_budget": budget["text"],
                     "hook_code": hook["hook_code"], "hook_name": hook["hook_name"],
                     "ratio": ratio, "rows": shot_rows, "placeholders": placeholders,
                     "retention_issues": retention,
@@ -583,7 +975,8 @@ def main(argv=None):
                     "retention_notes": [(key, detail) for key, detail in retention
                                         if CHECKS.get(key, ("low", ""))[0] == "low"],
                     "issues": issues,
-                    "model_prompt": build_model_prompt(product, style, hook, shot_rows, ratio, args.duration),
+                    "model_prompt": build_model_prompt(product, style, hook, shot_rows, ratio,
+                                                       args.duration, budget),
                 }
                 assets.append(asset)
                 for key, detail in issues:
@@ -593,7 +986,8 @@ def main(argv=None):
                                      args.duration, hook["hook_code"], hook["hook_name"], row["shot_index"],
                                      row["timecode"], row["shot_seconds"], row["shot_type"],
                                      row["visual_prompt"], row["caption"], row["voiceover"],
-                                     row["retention_note"], placeholders, row["note"]])
+                                     row["retention_note"], budget["code"], budget["text"],
+                                     placeholders, row["note"]])
 
     for key, hits in sorted(issue_index.items()):
         level, description = CHECKS.get(key, ("medium", key))
@@ -621,6 +1015,12 @@ def main(argv=None):
         "duration_s": args.duration,
         "ratios": ratios,
         "sites": sorted({asset["site"] for asset in assets}),
+        "working_language": working_language,
+        "languages": sorted({asset["language"] for asset in assets if asset["language"]}),
+        "speech_rates": [{"site": site, "language": language, "budget": budget, "provisional": provisional}
+                         for site, language, budget, provisional in sorted(
+                             {(asset["site"], asset["language"], asset["speech_budget"],
+                               asset["language_provisional"]) for asset in assets})],
         "hooks": [{"hook_code": hook["hook_code"], "hook_name": hook["hook_name"]} for hook in hooks],
         "assets": assets,
         "uncovered_sites": sorted(uncovered_sites),
@@ -656,7 +1056,11 @@ def main(argv=None):
         + [{"ref": os.path.basename(path), "as_of": ""} for path in args.hooks],
         assumptions=[
             "分镜骨架固定五段：3 秒钩子 → 痛点场景 → 产品演示 → 证明 → CTA，第一镜永远是钩子",
-            "口播语速上限按语种经验值折算（zh 4.5 字/秒、en 2.6、es/pt 2.8 词/秒），随主播语速浮动，可按自查结果调整",
+            "口播语速上限按目标语种折算：中文/日文/韩文/泰文等按字符，其余语种按空格分词；"
+            "数值是广告口播的经验上限（比自然语速慢约 10–20%），可用 --speech-rate 或风格库的"
+            "「语速上限」列覆盖，最终以目标语种实际配音试听为准",
+            "口播长度测算把每个 {{待填:}} 记作 2 个单位（会被真实内容替换，不能按 0 计），"
+            "本地化后必须按目标语种重新复测前 3 秒",
             "文案中的 {{待填:字段}} 是刻意留出的创意位，必须由模型或人工补齐后再进生成队列",
             "地区人群与媒体风格一律取自 --styles 指定的风格库，本脚本不编造地区习惯与平台偏好",
         ],

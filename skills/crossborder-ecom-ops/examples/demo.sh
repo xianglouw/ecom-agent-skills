@@ -27,7 +27,7 @@ echo "[3/6] 选品利润测算（五国站点） -> out/selection.md"
   --channel both --out out/selection.csv --out-md out/selection.md \
   --out-json out/selection.json --quarantine out/selection_unpriced.csv > /dev/null
 
-echo "[4/6] 多模态素材生产（分镜 + 生成提示词 + 前三秒留存检查） -> out/brief.md"
+echo "[4/6] 多模态素材生产（分镜 + 生成提示词 + 前三秒留存检查 + 多语种本地化） -> out/brief.md"
 "$PY" "$S/video_brief.py" products.csv --styles market_styles.csv \
   --hooks hook_patterns.csv --banned banned_words.csv \
   --duration 15 --ratio 9:16 --hooks-per-sku 2 \

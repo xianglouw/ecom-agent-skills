@@ -412,6 +412,8 @@ ALIASES = {
     "as_of": ["获取日期", "抓取日期", "asof", "检索日期", "来源日期"],
     "scene": ["场景", "使用场景", "场景偏好", "scene"],
     "tone": ["调性", "话术调性", "语气", "tone", "voice"],
+    "speech_rate": ["语速", "语速上限", "口播语速", "语速基线", "每秒字数", "每秒词数",
+                    "speechrate", "speech_rate"],
     "platforms": ["主流平台", "媒体平台", "投放平台", "平台组合", "platforms"],
     "desc": ["描述", "钩子说明", "说明文案", "description", "desc"],
     "caption_template": ["字幕模板", "字幕句式", "captiontemplate", "captions"],

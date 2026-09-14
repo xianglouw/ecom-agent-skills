@@ -6,7 +6,7 @@
 
 | 技能 | 解决什么 | 覆盖阶段 |
 |---|---|---|
-| [crossborder-ecom-ops](skills/crossborder-ecom-ops/) | 多平台运营全链路：规则碎片化、重复作业、素材产能不足、无标准 SOP、复盘低效、扣费风险 | 规则检索 → 表格整理 → 选品测算 → 多模态素材与投流 → PO 单 → ROI 复盘 |
+| [crossborder-ecom-ops](skills/crossborder-ecom-ops/) | 多平台运营全链路：规则碎片化、重复作业、素材产能不足、无标准 SOP、复盘低效、扣费风险 | 规则检索 → 表格整理 → 选品测算 → 多模态素材与投流（任意目标语种） → PO 单 → ROI 复盘 |
 
 技能的行为规范（路由、输出契约、风险分级、人机边界）写在各自的 [SKILL.md](skills/crossborder-ecom-ops/SKILL.md) 里，用法与示例见下方详解。
 
@@ -44,7 +44,7 @@ cd ecom-agent-skills/skills/crossborder-ecom-ops/examples && ./demo.sh
 [1/6] 费率核算   → 6 单中 2 单未匹配规则、1 单负毛利，需人工复核 4 项
 [2/6] 表格清洗   → 读入 7 行输出 5 行，去重 1 行、隔离 1 行
 [3/6] 选品测算   → 3 个 SKU × 5 个拉美站点 × 零售/批发 = 30 行，4 行净利为负
-[4/6] 素材 brief → 3 个市场 × 2 个钩子 = 6 条素材、30 行分镜，前三秒 2 条通过、4 条口播讲不完
+[4/6] 素材 brief → 7 个产品 × 7 个市场 = 14 条素材、70 行分镜，前三秒 8 条通过、6 条口播讲不完
 [5/6] PO 单      → 金额不符 1 行、重复行 1 组、超审批上限
 [6/6] ROI 复盘   → 3 个分组，ROAS 1.43、净利 -4423，4 项高风险待复核
 ```
@@ -54,6 +54,8 @@ cd ecom-agent-skills/skills/crossborder-ecom-ops/examples && ./demo.sh
 选品测算这一步的产物就是能直接打开的表格：`examples/out/selection.csv`（Excel 打开不乱码）和 `selection.md`（按站点分节的测算表，亏损行排在最前，直接给出保本价与目标售价）。
 
 素材 brief 这一步的产物是拍片/生成能直接用的三件套：`examples/out/brief.md`（按素材分节的分镜脚本 + 可直接粘给文生视频模型的生成提示词）、`storyboard.csv`（一条素材一行镜头：时间码、画面、字幕、口播、留存说明）、`brief_issues.csv`（没通过前三秒检查的素材清单）。示例钩子库里 H01/H03/H04/H05 的口播刻意写长了，所以会真实触发「前 3 秒讲不完」的语速拦截——这个检查不是摆设。
+
+示例数据覆盖西语、葡语、越南语、日语、泰语、英语六种目标语种，`brief.md` 里带「本地化与语速预算」一节：逐市场给出「前 3 秒最多讲几个词/几个字符」，并把该语种的本地化交付清单一起列出来。语速预检会区分「还没本地化的中文草稿」和「已按目标语种写好的文案」——前者只做工作语言预检并提示预算，后者按目标语种真实上限判定，超长直接拦截。
 
 ## crossborder-ecom-ops 详解
 
@@ -66,6 +68,7 @@ cd ecom-agent-skills/skills/crossborder-ecom-ops/examples && ./demo.sh
 | 平台规则碎片化，跨平台查一次要一两个小时 | 「规则检索」阶段把费率、税务、物流、政策归一成可检索的对照表，查询压到分钟级 |
 | 多站点定价靠拍脑袋，运费与关税吃完利润 | 「选品测算」阶段按站点、渠道逐行算净利，反算保本价与目标售价，负毛利组合强制转人工 |
 | 广告素材产能不足，靠人拍、靠人剪、靠人翻译 | 「多模态素材」阶段把产品定义 × 市场风格库 × 钩子模板库做组合，批量产出分镜、生成提示词、配音字幕文本与素材命名规范，交给图/视频模型批量出片 |
+| 素材只做得动西语，换越南语、日语、泰语、阿拉伯语就只能返工或外包 | 「多模态素材」阶段按目标语种给出口播预算与本地化交付清单，覆盖 53 个语种（含按字符计的中日韩泰、按词计的英西葡越、RTL 的阿拉伯语与希伯来语）；语种写法连平台后台的原生写法都认（`Tiếng Việt`、`日本語`、`ภาษาไทย`、`العربية`），换语种不用改脚本 |
 | 投出去的视频前 3 秒留不住人，钱花了没量 | 每条素材过一遍前三秒留存检查（首帧禁止 logo/片头/黑屏、必须有动作、字幕可读、口播按语种语速不超时），不通过的不进投放队列 |
 | 重复性作业量大（算费、算利润、算 ROI、做单） | 六个 Python 脚本做确定性核算，不靠模型心算 |
 | 没有标准 SOP，各人一套口径 | 六段式 Prompt 框架 + 统一 JSON 输出契约，团队口径写进文件 |
@@ -79,7 +82,7 @@ cd ecom-agent-skills/skills/crossborder-ecom-ops/examples && ./demo.sh
 | 1 规则信息搜集 | 合规规则、费率、政策、物流规范的结构化与检索 | [references/rules-research.md](skills/crossborder-ecom-ops/references/rules-research.md) | `scripts/fee_check.py` |
 | 2 表格数据整理 | 多来源表头归一、清洗去重、口径统一、结构化落表 | [references/data-prep.md](skills/crossborder-ecom-ops/references/data-prep.md) | `scripts/clean_table.py` |
 | 3 选品利润测算 | 逐站点算佣金、运费、关税与净利，反算保本价、目标售价，标记亏损组合 | [references/selection-profit.md](skills/crossborder-ecom-ops/references/selection-profit.md) | `scripts/selection_profit.py` |
-| 4 多模态素材与投流 | 分镜脚本、生成提示词、前三秒留存检查、地区人群风格适配；投放结构、出价预算、测品与止损 | [references/video-production.md](skills/crossborder-ecom-ops/references/video-production.md) / [references/ads-video.md](skills/crossborder-ecom-ops/references/ads-video.md) | `scripts/video_brief.py` |
+| 4 多模态素材与投流 | 分镜脚本、生成提示词、前三秒留存检查、任意目标语种本地化与语速预算、地区人群风格适配；投放结构、出价预算、测品与止损 | [references/video-production.md](skills/crossborder-ecom-ops/references/video-production.md) / [references/ads-video.md](skills/crossborder-ecom-ops/references/ads-video.md) | `scripts/video_brief.py` |
 | 5 PO 单制作 | 需求表/报价表 → 可执行的采购订单 + 下单前校验 | [references/po-creation.md](skills/crossborder-ecom-ops/references/po-creation.md) | `scripts/po_build.py` |
 | 6 ROI 数据复盘 | 指标核算、分组对比、归因、周报与下周动作 | [references/roi-review.md](skills/crossborder-ecom-ops/references/roi-review.md) | `scripts/roi_review.py` |
 
@@ -94,7 +97,7 @@ cd ecom-agent-skills/skills/crossborder-ecom-ops/examples && ./demo.sh
 | `fee_check.py` | 按平台/站点/类目/价格阶梯匹配费率，算佣金、支付费、履约仓储、税费、净利与保本 ROAS | `fee_check.py orders.csv --rates 费率表.csv --summary` |
 | `clean_table.py` | 表头中英文别名归一、金额与日期标准化、去重、必填校验、问题行隔离 | `clean_table.py raw.xlsx --out clean.csv --require sku,price --dedupe-on sku,date` |
 | `selection_profit.py` | 逐站点、逐渠道算售价/佣金/运费/关税/净利，反算保本价与目标售价，按站点聚合风险 | `selection_profit.py items.csv --freight freight.csv --de-minimis 50 --duty-rate 0.16 --channel both --out-md selection.md` |
-| `video_brief.py` | 产品定义 × 市场风格库 × 钩子模板库批量出分镜脚本、生成提示词；前三秒留存检查（首帧、字幕、语速、禁用开场、禁用词） | `video_brief.py products.csv --styles market_styles.csv --hooks hook_patterns.csv --banned banned_words.csv --out-md brief.md` |
+| `video_brief.py` | 产品定义 × 市场风格库 × 钩子模板库批量出分镜脚本、生成提示词；前三秒留存检查（首帧、字幕、语速、禁用开场、禁用词）；多语种本地化与分语种语速预算（53 个语种、400+ 种写法，中日韩泰柬老缅按字符、英西葡越等 46 个语种按词，阿语/希伯来语/乌尔都语等 RTL 语种单独处理） | `video_brief.py products.csv --styles market_styles.csv --hooks hook_patterns.csv --banned banned_words.csv --out-md brief.md` |
 | `po_build.py` | 需求表生成 PO 单，校验 MOQ、单位、金额、审批阈值与交期 | `po_build.py sourcing.csv --supplier "A" --currency USD --max-amount 5000` |
 | `roi_review.py` | CTR/CVR/CPC/CPA/ROAS/ACOS/TACOS/净利/保本 ROAS + 环比对照 + 复盘表格 | `roi_review.py 投放.xlsx --group-by campaign --compare 上期.csv --out-md review.md` |
 
@@ -148,7 +151,7 @@ cd ecom-agent-skills/skills/crossborder-ecom-ops/examples && ./demo.sh
 1. **换费率表**：按 `references/rules-research.md` 的字段结构维护你自己的合规费率对照表，`fee_check.py` 直接读，支持多个文件。
 2. **加字段别名**：常见列名不够用时，在 `scripts/sheetio.py` 的 `ALIASES` 里补，或用 `--map` 临时指定。
 3. **调阈值**：环比告警、费率有效期、低毛利提醒、审批金额上限都是命令行参数，不需要改代码。
-4. **换风格库与钩子库**：市场风格库（`examples/market_styles.csv`）和钩子模板库（`examples/hook_patterns.csv`）都是普通表格——把你的达人素材复盘结论、后台数据、当地团队反馈按列填进去就生效，钩子类型随品类自己扩；口播语速上限与禁用开场方式在 `video_brief.py` 顶部常量里，动作词表可以直接用 `--actions` 外置扩充。
+4. **换风格库与钩子库**：市场风格库（`examples/market_styles.csv`）和钩子模板库（`examples/hook_patterns.csv`）都是普通表格——把你的达人素材复盘结论、后台数据、当地团队反馈按列填进去就生效，钩子类型随品类自己扩；口播语速上限优先取风格库的「语速上限」列（按站点分语种写），没写就落到脚本内置的 53 个语种语速表，还能用 `--speech-rate ja=6,vi=3.5` 临时覆盖；禁用开场方式在 `video_brief.py` 顶部常量里，动作词表可以直接用 `--actions` 外置扩充。
 5. **加阶段**：新建 `references/<阶段>.md`，在 `SKILL.md` 的路由表里加一行，按 `prompt-contract.md` 的模板定义入参、规则、输出与兜底。
 
 ## 仓库结构
@@ -199,7 +202,7 @@ ecom-agent-skills/
 
 A collection of agent skills for cross-border e-commerce operations. Each skill bundles its own playbooks, dependency-free Python scripts, and human-in-the-loop risk rules.
 
-Currently included: **crossborder-ecom-ops** — platform rule & fee research, messy spreadsheet cleanup, per-site selection & pricing profit modeling, multimodal ad creative production (storyboards, generation prompts, first-3-second retention checks) with ad planning, purchase order generation with validation, and ROI/ROAS review.
+Currently included: **crossborder-ecom-ops** — platform rule & fee research, messy spreadsheet cleanup, per-site selection & pricing profit modeling, multimodal ad creative production (storyboards, generation prompts, first-3-second retention checks, and multilingual localization with per-language speech budgets for 53 languages) with ad planning, purchase order generation with validation, and ROI/ROAS review.
 
 ```bash
 git clone https://github.com/xianglouw/ecom-agent-skills.git

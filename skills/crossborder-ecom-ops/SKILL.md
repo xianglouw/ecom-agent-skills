@@ -1,8 +1,8 @@
 ---
 name: crossborder-ecom-ops
-description: 跨境电商多平台运营端到端工作流，覆盖平台规则与费率检索、运营表格数据整理、选品利润与定价测算、多模态广告素材生产与投流、PO 单制作与校验、ROI 数据复盘六类任务。用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台的合规规则与费率整理、扣费风险排查、多来源表格合并清洗、售价与关税利润测算、广告分镜脚本与文生视频提示词设计、前三秒留存检查、投流脚本与投放结构设计、采购订单生成、ROAS/ACOS/TACOS 核算与周报复盘等请求。
+description: 跨境电商多平台运营端到端工作流，覆盖平台规则与费率检索、运营表格数据整理、选品利润与定价测算、多模态广告素材生产与多语种本地化、投流、PO 单制作与校验、ROI 数据复盘六类任务。用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台的合规规则与费率整理、扣费风险排查、多来源表格合并清洗、售价与关税利润测算、广告分镜脚本与文生视频提示词设计、前三秒留存检查、英语西语葡语越南语日语泰语等任意目标语种的素材本地化与语速预算、投流脚本与投放结构设计、采购订单生成、ROAS/ACOS/TACOS 核算与周报复盘等请求。
 metadata:
-  short-description: 跨境电商运营六阶段自动化工作流（含多模态素材生产与前三秒留存检查）
+  short-description: 跨境电商运营六阶段自动化工作流（含多模态素材生产、多语种本地化与前三秒留存检查）
 ---
 
 # 跨境电商运营 Agent 工作流
@@ -14,7 +14,7 @@ metadata:
 | 1 规则信息搜集 | 多平台合规规则、费率、政策、物流规范的结构化与检索 | [references/rules-research.md](references/rules-research.md) | `scripts/fee_check.py` |
 | 2 表格数据整理 | 多来源表头归一、清洗去重、口径统一、结构化落表 | [references/data-prep.md](references/data-prep.md) | `scripts/clean_table.py` |
 | 3 选品利润测算 | 逐站点算售价、佣金、运费、关税与净利，反算保本价与目标售价 | [references/selection-profit.md](references/selection-profit.md) | `scripts/selection_profit.py` |
-| 4 广告视频生产与投流 | 多模态素材生产（分镜、生成提示词、前三秒留存检查）+ 投放结构、出价预算与止损 | [references/video-production.md](references/video-production.md) / [references/ads-video.md](references/ads-video.md) | `scripts/video_brief.py` |
+| 4 广告视频生产与投流 | 多模态素材生产（分镜、生成提示词、前三秒留存检查）+ 任意目标语种本地化与语速预算 + 投放结构、出价预算与止损 | [references/video-production.md](references/video-production.md) / [references/ads-video.md](references/ads-video.md) | `scripts/video_brief.py` |
 | 5 PO 单制作 | 需求表/报价表 → 可执行的采购订单 + 校验 | [references/po-creation.md](references/po-creation.md) | `scripts/po_build.py` |
 | 6 ROI 数据复盘 | 指标核算、分组对比、归因、周报与下周动作 | [references/roi-review.md](references/roi-review.md) | `scripts/roi_review.py` |
 
@@ -74,7 +74,7 @@ Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法�
 | 等级 | 场景示例 | AI 权限 | 人工权限 |
 |---|---|---|---|
 | 高 | 退款审批、付款下单、超阈值预算、改价、合规申诉、正毛利被判亏损、新供应商首单、选品净利为负、跨关税门槛定价、素材命中禁用词、市场风格缺失 | 只出判定 + 依据 + 待办 | 终审并执行 |
-| 中 | 费率未覆盖、口径不一致、环比异常波动、政策过渡期、含税口径不明、运费分段未覆盖、低于目标毛利、前 3 秒口播超长 | 出结论 + 风险标注 | 抽样复核 |
+| 中 | 费率未覆盖、口径不一致、环比异常波动、政策过渡期、含税口径不明、运费分段未覆盖、低于目标毛利、前 3 秒口播超长、字幕超单行长度、产品表与风格库语种冲突 | 出结论 + 风险标注 | 抽样复核 |
 | 低 | 字段清洗、格式转换、指标核算、脚本草稿、表格汇总 | 直接执行 | 事后抽查 |
 
 ## 脚本
@@ -101,7 +101,7 @@ python3 scripts/selection_profit.py items.csv --freight freight.csv --freight-he
 
 # 阶段 4：多模态素材生产（分镜 + 生成提示词 + 前三秒留存检查）
 python3 scripts/video_brief.py products.csv --styles 市场风格库.csv --hooks 钩子模板库.csv \
-  --banned 禁用词表.csv --duration 15 --ratio 9:16,16:9 --hooks-per-sku 2 \
+  --banned 禁用词表.csv --duration 15 --ratio 9:16,16:9 --hooks-per-sku 2 --speech-rate vi=3.5 \
   --out storyboard.csv --out-md brief.md --out-json brief.json
 
 # 阶段 5：PO 单生成 + 校验
@@ -114,6 +114,8 @@ python3 scripts/roi_review.py 投放明细.xlsx --group-by campaign --compare �
 ```
 
 选品测算的汇率、佣金率、关税门槛全部来自命令行参数，脚本不内置任何费率；缺税率、缺重量、重量超出运费分段、缺汇率都会落成 `flags` 并按站点聚合，不会静默跳过。素材 brief 的地区风格一律取自市场风格库，风格库缺失的市场直接标 high；文案里需要创意填空的位置写成 `{{待填:字段}}` 显式暴露，不替你编造卖点与场景。
+
+素材 brief 不绑定任何单一语种：中文、日语、韩语、泰文、高棉文、老挝文、缅甸文按字符计口播长度，英语、西语、葡语、越南语、印尼语、阿拉伯语、俄语等 46 个语种按空格分词计，内置 53 个语种的语速上限，可用 `--speech-rate` 或风格库的「语速上限」列按市场覆盖。目标语种支持短代码（`vi-VN`）、英文名、中文名与简称，以及平台后台里的原生写法（`Tiếng Việt`、`日本語`、`ภาษาไทย`、`العربية`、`Español`），共 400+ 种写法。产品表与风格库语种对不上会标 `language_conflict`，语种认不出来或没写会标 `language_unrecognized` / `language_missing`，文案还没本地化会标 `retention_localization` 并给出目标语种的前 3 秒口播预算。
 
 先用 `--help` 看完整参数。
 
