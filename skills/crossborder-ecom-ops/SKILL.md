@@ -17,7 +17,7 @@ metadata:
 | 2 表格数据整理 | 表头归一、清洗去重、口径统一、结构化落表 | [`ecom-data-prep`](../ecom-data-prep/) | `clean_table.py` |
 | 2B 手写单据台账 | 手写采购/销售单据识别结构化、简写标准化、自动算账、日结与凭证回链 | [`ecom-receipt-ledger`](../ecom-receipt-ledger/) | `receipt_ledger.py` |
 | 3 选品利润测算 | 逐站点算售价、佣金、运费、关税与净利，反算保本价与目标售价 | [`ecom-selection-profit`](../ecom-selection-profit/) | `selection_profit.py` |
-| 4 视频素材生产 | 分镜、生成提示词、前三秒留存检查、任意语种本地化与语速预算 | [`ecom-video-creative`](../ecom-video-creative/) | `video_brief.py` |
+| 4 视频素材生产 | 分镜、生成提示词、前三秒留存检查、任意语种本地化与语速预算；提示词可直连视频生成接口出片 | [`ecom-video-creative`](../ecom-video-creative/) | `video_brief.py`（出分镜）/ `video_render.py`（直连出片，可选） |
 | 5 广告投放 | 投放结构、出价预算、放量节奏、止损判优 | [`ecom-ads-plan`](../ecom-ads-plan/) | 无脚本，出表格与清单 |
 | 6 PO 单制作 | 需求表 + 报价 → 采购订单 + 下单前校验 | [`ecom-po-build`](../ecom-po-build/) | `po_build.py` |
 | 7 ROI 数据复盘 | 指标核算、分组环比、归因、周报与下周动作 | [`ecom-roi-review`](../ecom-roi-review/) | `roi_review.py` |

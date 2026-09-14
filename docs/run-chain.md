@@ -113,17 +113,24 @@ flowchart LR
 
 ### ④ 视频素材 · `ecom-video-creative`
 
-- **触发**：产品要出广告脚本、要文生视频/图生视频提示词、要本地化到目标语种。
+- **触发**：产品要出广告脚本、要文生视频/图生视频提示词、要本地化到目标语种、要把提示词接到视频生成接口出片。
 - **输入**：商品表 + 市场风格库（`--styles`）+ 钩子库（`--hooks`）+ 禁用词表（`--banned`）。
 - **命令**：
   ```bash
   python3 scripts/video_brief.py products.csv --styles market_styles.csv --hooks hook_patterns.csv \
     --banned banned_words.csv --duration 15 --ratio 9:16,16:9 --hooks-per-sku 2 --speech-rate vi=3.5 \
     --out storyboard.csv --out-md brief.md --out-xlsx brief.xlsx --out-json brief.json
+
+  # 可选：把分镜里的提示词接到视频生成平台出真实镜头片段（换平台只改 --provider）
+  python3 scripts/video_render.py --list-providers
+  python3 scripts/video_render.py storyboard.csv --provider ark --check
+  python3 scripts/video_render.py storyboard.csv --provider ark --max-clips 8 --confirm \
+    --outdir renders --out renders.csv --out-xlsx renders.xlsx --out-json renders.json
   ```
 - **产物**：素材总表 / 分镜 / 语速预算 / 问题清单（前三秒留存逐条检查）。
+- **生成侧产物**（可选）：成片文件（`--outdir`）、生成台账（任务 ID、提交与完成时间、耗时、失败原因）、未生成清单。
 - **交接给下游**：素材编号 `{SKU}_{站点}_{钩子}_{比例}_{时长}_v{n}`、钩子编码、目标语种、前三秒判定结果。
-- **人工卡点**：命中禁用词、认证标签缺失——出整改建议，人确认后再投。
+- **人工卡点**：命中禁用词、认证标签缺失——出整改建议，人确认后再投。**调视频生成接口按条计费，用哪家模型、跑多少条由人决定；脚本默认试跑，不加 `--confirm` 不发出任何请求。**
 
 ### ⑤ 广告投放 · `ecom-ads-plan`
 

@@ -1,6 +1,6 @@
 ---
 name: ecom-video-creative
-description: 跨境电商多模态广告素材生产技能。把产品定义 × 市场风格库 × 钩子模板库做组合，批量产出可直接投产的分镜脚本、文生视频/图生视频模型提示词（Seedance、Veo、Sora、Kling、即梦等）、配音字幕文本与素材命名规范，并按前三秒留存法则逐条检查钩子强度、首帧主体、开场禁忌、前 3 秒动态、字幕长度、口播语速预算与禁用词；支持英语、西语、葡语、越南语、日语、泰语、阿拉伯语等任意目标语种的文案本地化与语速预算（内置 53 个语种，400+ 种写法）。涉及「给这个产品出广告脚本」「文生视频提示词怎么写」「前三秒怎么留住人」「素材本地化到越南语/日语/泰语」「这个钩子行不行」这类请求时使用。
+description: 跨境电商多模态广告素材生产技能。把产品定义 × 市场风格库 × 钩子模板库做组合，批量产出可直接投产的分镜脚本、文生视频/图生视频模型提示词（Seedance、Veo、Sora、Kling、即梦等）、配音字幕文本与素材命名规范，并按前三秒留存法则逐条检查钩子强度、首帧主体、开场禁忌、前 3 秒动态、字幕长度、口播语速预算与禁用词；支持英语、西语、葡语、越南语、日语、泰语、阿拉伯语等任意目标语种的文案本地化与语速预算（内置 53 个语种，400+ 种写法）。写好的提示词可直连视频生成大模型接口出真实镜头片段：用户选定平台与模型（火山方舟 Seedance、通义万相、可灵、海螺 MiniMax、Veo、Sora、Runway、Luma、Replicate、fal 等 12 个平台），脚本负责组装请求、提交轮询、取回成片与记生成台账。涉及「给这个产品出广告脚本」「文生视频提示词怎么写」「前三秒怎么留住人」「素材本地化到越南语/日语/泰语」「这个钩子行不行」「把提示词接到视频生成接口出片」这类请求时使用。
 metadata:
   short-description: 阶段 4 素材生产 — 分镜、生成提示词、前三秒留存检查与任意语种本地化
 ---
@@ -20,6 +20,10 @@ metadata:
 
 ## 怎么跑
 
+分两步：**先出分镜与提示词（确定性计算，不调模型），再决定要不要直连生成**。
+
+### 第一步 · 出分镜与提示词
+
 ```bash
 python3 scripts/video_brief.py products.csv --styles market_styles.csv \
   --hooks hook_patterns.csv --banned banned_words.csv \
@@ -29,6 +33,24 @@ python3 scripts/video_brief.py products.csv --styles market_styles.csv \
 ```
 
 `--out-xlsx` 一次给四张工作表：素材总表 / 分镜 / 语速预算 / 问题清单。
+
+### 第二步 · 把提示词接到视频生成平台（可选）
+
+**用哪个大模型由用户定**，脚本只负责把提示词按该平台的参数名装进请求，并跑完提交 → 轮询 → 取回成片 → 记台账：
+
+```bash
+python3 scripts/video_render.py --list-providers          # 1. 看有哪些平台可选、默认模型与所需环境变量
+python3 scripts/video_render.py storyboard.csv --provider ark --check    # 2. 验凭据，不花钱
+python3 scripts/video_render.py storyboard.csv --provider ark --assets A001 --shots 1 --print-request
+python3 scripts/video_render.py storyboard.csv --provider ark --max-clips 8 --confirm \
+  --outdir renders --out renders.csv --out-xlsx renders.xlsx --out-json renders.json   # 3. 真跑
+```
+
+预置 12 个平台，换平台只改 `--provider`：`mock`（离线演示，默认）/ `ark` 火山方舟 Seedance / `dashscope` 通义万相 / `kling`、`kling-i2v` 可灵 / `minimax` 海螺 / `gemini` Veo / `openai` Sora / `runway` / `luma` / `replicate` / `fal`。
+
+**不加 `--confirm` 一个请求都不发**；`--max-clips`（默认 10）是花钱硬上限；已成功且文件还在的镜头默认跳过，不重复付费。首帧图用 `--first-frame-dir` 给目录（认 `素材名_镜头号.png` / `素材名.png`），图生视频平台会自动转成 base64 或内联地址。
+
+平台凭据、各平台注意事项、参数会随版本变化的声明见 [references/render-providers.md](references/render-providers.md)。
 
 ## 分镜骨架与检查项
 
@@ -49,6 +71,8 @@ python3 scripts/video_brief.py products.csv --styles market_styles.csv \
 | 高 | 命中合规禁用词、市场风格缺失、前 3 秒口播讲不完、首帧踩开场禁忌 | 只出判定 + 修改建议 | 终审后才进生成与投放队列 |
 | 中 | 字幕超单行长度、文案未本地化、素材含待填创意位、产品表与风格库语种冲突 | 出结论 + 风险标注 | 抽样复核 |
 | 低 | 素材命名、分镜排版、批量组合、格式转换 | 直接执行 | 事后抽查 |
+
+**接了生成侧之后，多一条与钱有关的边界**：调生成接口会按条计费，脚本不掌握各平台的实时单价。所以「选哪个平台、跑多少条、放开多大的量」是**用户决定并确认**的事——脚本只把选中数量、将发出的请求体、本次硬上限摆出来，**不加 `--confirm` 绝不提交**。批量化前先小批验证（`--max-clips` 压到 1–2 条），确认提示词与首帧没跑偏再放量。
 
 **素材里的创意位写成 `{{待填:字段}}` 显式暴露**，不要替用户编造卖点、场景、证明与价格承诺；没补齐的素材不能进生成队列。所有生成用的模型提示词只描述画面与镜头，不做绝对化宣传、不做未证实对比、不用无授权音乐。
 
@@ -93,6 +117,8 @@ python3 scripts/video_brief.py products.csv --styles market_styles.csv \
 | `--out-md` | Markdown 报告 | 给人读的结论版 |
 | `--quarantine` | 问题清单 CSV | 被拦下的素材/行，不静默丢弃 |
 | `--out-json` | JSON 信封 | 给下游脚本、工单系统读 |
+
+走直连生成时另有一组产物（`video_render.py`）：`--outdir` 成片目录、`--out` 生成台账 CSV（含任务 ID、提交与完成时间、耗时、失败原因）、`--out-xlsx` 台账 Excel（失败行标红底）、`--quarantine` 未生成清单（带上当时的提示词，方便改完重投）。
 
 `.xlsx` 由 `scripts/sheetio.py` 用标准库写出，不需要 openpyxl，Excel 与 WPS 都能直接打开；同一个工具也用来读 `.xlsx`（`--sheet` 支持工作表名）。
 

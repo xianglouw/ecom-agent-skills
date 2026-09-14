@@ -1,0 +1,423 @@
+{
+  "_readme": [
+    "视频生成平台接入配置。改这个文件不用改代码：加平台、改模型名、改参数都只动这里。",
+    "端点形状为 2026-09-14 实测确认（无鉴权调用返回 401/403 即代表路径正确）。",
+    "各平台参数名会随版本变化，正式投产前先用 `--check` 验凭据、用 `--print-request` 看实际请求体，",
+    "再对照该平台最新文档核对一次；不对就改本文件，或用 --provider-file 传一份自己的覆盖配置。",
+    "",
+    "auth.type：bearer（Authorization: Bearer $ENV）/ header（自定义头）/ jwt（AK+SK 签 JWT，可灵用）/ none",
+    "body 里可用的占位符：{prompt} {model} {model_owner} {model_name} {ratio} {size} {duration} {seed}",
+    "                    {first_frame} {first_frame_url} {asset_name} {shot_index} {caption} {voiceover}",
+    "drop_if_empty：渲染后为空串就整段删掉，用来做「有首帧图才带 image 字段」这类可选参数。",
+    "路径写法：a.b.0.c 表示逐层取值；写成数组表示按顺序取第一个存在的。"
+  ],
+  "providers": {
+    "mock": {
+      "label": "离线演示（不联网、不花钱）",
+      "vendor": "本机",
+      "docs": "",
+      "engine": "mock",
+      "capabilities": ["text2video", "image2video"],
+      "default_model": "mock-video-1",
+      "models": ["mock-video-1"],
+      "status_path": "status",
+      "ok_values": ["succeeded"],
+      "fail_values": ["failed"],
+      "note": "只走通「提交 → 轮询 → 下载 → 记台账」这条链路，不调用任何接口、不产生真实视频，用来验证脚本与产物格式。"
+    },
+
+    "ark": {
+      "label": "火山方舟 · Seedance / 豆包视频",
+      "vendor": "字节跳动",
+      "docs": "https://www.volcengine.com/docs/82379",
+      "engine": "http",
+      "auth": { "type": "bearer", "env": "ARK_API_KEY" },
+      "capabilities": ["text2video", "image2video"],
+      "default_model": "doubao-seedance-1-0-pro-250528",
+      "models": ["doubao-seedance-1-0-pro-250528", "doubao-seedance-1-0-lite-t2v-250428"],
+      "ratio_map": { "9:16": "9:16", "16:9": "16:9", "1:1": "1:1" },
+      "create": {
+        "method": "POST",
+        "url": "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "model": "{model}",
+          "content": [
+            { "type": "text", "text": "{prompt}" },
+            { "type": "image_url", "image_url": { "url": "{first_frame_url}" } }
+          ],
+          "ratio": "{size}",
+          "duration": "{duration}",
+          "watermark": false
+        },
+        "drop_if_empty": ["content.1"]
+      },
+      "task_id_path": "id",
+      "poll": {
+        "method": "GET",
+        "url": "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/{task_id}",
+        "headers": {}
+      },
+      "status_path": "status",
+      "ok_values": ["succeeded"],
+      "fail_values": ["failed", "cancelled", "expired"],
+      "video_path": ["content.video_url", "content.0.video_url"],
+      "download": "url",
+      "note": "首帧图走 content 里的 image_url；比例与时长也支持写进 text 的 --ratio/--dur 参数，按官方文档为准。"
+    },
+
+    "dashscope": {
+      "label": "阿里云百炼 · 通义万相",
+      "vendor": "阿里巴巴",
+      "docs": "https://help.aliyun.com/zh/model-studio/",
+      "engine": "http",
+      "auth": { "type": "bearer", "env": "DASHSCOPE_API_KEY" },
+      "capabilities": ["text2video", "image2video"],
+      "default_model": "wan2.1-t2v-turbo",
+      "models": ["wan2.1-t2v-turbo", "wan2.1-t2v-plus", "wan2.2-t2v-plus"],
+      "ratio_map": { "9:16": "1080*1920", "16:9": "1920*1080", "1:1": "1080*1080" },
+      "create": {
+        "method": "POST",
+        "url": "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+        "headers": { "Content-Type": "application/json", "X-DashScope-Async": "enable" },
+        "body": {
+          "model": "{model}",
+          "input": { "prompt": "{prompt}", "img_url": "{first_frame_url}" },
+          "parameters": { "size": "{size}", "duration": "{duration}" }
+        },
+        "drop_if_empty": ["input.img_url"]
+      },
+      "task_id_path": ["output.task_id", "task_id"],
+      "poll": {
+        "method": "GET",
+        "url": "https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}",
+        "headers": {}
+      },
+      "status_path": ["output.task_status", "task_status"],
+      "ok_values": ["SUCCEEDED", "succeeded"],
+      "fail_values": ["FAILED", "CANCELED", "UNKNOWN"],
+      "video_path": ["output.video_url", "output.results.0.url"],
+      "download": "url"
+    },
+
+    "kling": {
+      "label": "可灵 · 文生视频",
+      "vendor": "快手",
+      "docs": "https://app.klingai.com/cn/dev/document-api",
+      "engine": "http",
+      "auth": { "type": "jwt", "env_ak": "KLING_ACCESS_KEY", "env_sk": "KLING_SECRET_KEY", "ttl": 1800 },
+      "capabilities": ["text2video"],
+      "default_model": "kling-v1",
+      "models": ["kling-v1", "kling-v1-6", "kling-v2-master"],
+      "ratio_map": { "9:16": "9:16", "16:9": "16:9", "1:1": "1:1" },
+      "create": {
+        "method": "POST",
+        "url": "https://api.klingai.com/v1/videos/text2video",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "model_name": "{model}",
+          "prompt": "{prompt}",
+          "negative_prompt": "",
+          "aspect_ratio": "{size}",
+          "duration": "{duration}",
+          "mode": "std"
+        },
+        "drop_if_empty": ["negative_prompt"]
+      },
+      "task_id_path": "data.task_id",
+      "poll": {
+        "method": "GET",
+        "url": "https://api.klingai.com/v1/videos/text2video/{task_id}",
+        "headers": {}
+      },
+      "status_path": "data.task_status",
+      "ok_values": ["succeed"],
+      "fail_values": ["failed"],
+      "video_path": ["data.task_result.videos.0.url"],
+      "download": "url",
+      "note": "走 JWT 鉴权，需要在环境变量里同时提供 KLING_ACCESS_KEY 与 KLING_SECRET_KEY。"
+    },
+
+    "kling-i2v": {
+      "label": "可灵 · 图生视频",
+      "vendor": "快手",
+      "docs": "https://app.klingai.com/cn/dev/document-api",
+      "engine": "http",
+      "auth": { "type": "jwt", "env_ak": "KLING_ACCESS_KEY", "env_sk": "KLING_SECRET_KEY", "ttl": 1800 },
+      "capabilities": ["image2video"],
+      "requires_first_frame": true,
+      "default_model": "kling-v1",
+      "models": ["kling-v1", "kling-v1-6"],
+      "ratio_map": { "9:16": "9:16", "16:9": "16:9", "1:1": "1:1" },
+      "create": {
+        "method": "POST",
+        "url": "https://api.klingai.com/v1/videos/image2video",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "model_name": "{model}",
+          "image": "{first_frame_base64}",
+          "prompt": "{prompt}",
+          "aspect_ratio": "{size}",
+          "duration": "{duration}",
+          "mode": "std"
+        }
+      },
+      "task_id_path": "data.task_id",
+      "poll": {
+        "method": "GET",
+        "url": "https://api.klingai.com/v1/videos/image2video/{task_id}",
+        "headers": {}
+      },
+      "status_path": "data.task_status",
+      "ok_values": ["succeed"],
+      "fail_values": ["failed"],
+      "video_path": ["data.task_result.videos.0.url"],
+      "download": "url",
+      "note": "image 字段直接传首帧图的 base64（不带 data:image 前缀），用 --first-frame-dir 指定图片目录。"
+    },
+
+    "minimax": {
+      "label": "海螺 AI · MiniMax 视频",
+      "vendor": "MiniMax",
+      "docs": "https://platform.minimaxi.com/document",
+      "engine": "http",
+      "auth": { "type": "bearer", "env": "MINIMAX_API_KEY" },
+      "capabilities": ["text2video", "image2video"],
+      "default_model": "MiniMax-Hailuo-02",
+      "models": ["MiniMax-Hailuo-02", "T2V-01"],
+      "ratio_map": { "9:16": "9:16", "16:9": "16:9", "1:1": "1:1" },
+      "create": {
+        "method": "POST",
+        "url": "https://api.minimaxi.com/v1/video_generation",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "model": "{model}",
+          "prompt": "{prompt}",
+          "first_frame_image": "{first_frame_url}",
+          "duration": "{duration}",
+          "resolution": "1080P"
+        },
+        "drop_if_empty": ["first_frame_image"]
+      },
+      "task_id_path": ["task_id"],
+      "poll": {
+        "method": "GET",
+        "url": "https://api.minimaxi.com/v1/query/video_generation?task_id={task_id}",
+        "headers": {}
+      },
+      "status_path": "status",
+      "ok_values": ["Success", "success"],
+      "fail_values": ["Fail", "fail"],
+      "video_path": ["file_id"],
+      "download": "minimax_file",
+      "note": "查询返回 file_id，还需调 /v1/files/retrieve?file_id= 换下载地址；脚本已内置这一步。"
+    },
+
+    "gemini": {
+      "label": "Google Veo（Gemini API）",
+      "vendor": "Google",
+      "docs": "https://ai.google.dev/gemini-api/docs/video",
+      "engine": "http",
+      "auth": { "type": "header", "env": "GEMINI_API_KEY", "header": "x-goog-api-key" },
+      "capabilities": ["text2video", "image2video"],
+      "default_model": "veo-3.0-generate-preview",
+      "models": ["veo-3.0-generate-preview", "veo-3.0-fast-generate-preview"],
+      "ratio_map": { "9:16": "9:16", "16:9": "16:9" },
+      "create": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/{model}:predictLongRunning",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "instances": [{ "prompt": "{prompt}" }],
+          "parameters": { "aspectRatio": "{size}" }
+        }
+      },
+      "task_id_path": "name",
+      "poll": {
+        "method": "GET",
+        "url": "https://generativelanguage.googleapis.com/v1beta/{task_id}",
+        "headers": {}
+      },
+      "status_done_path": "done",
+      "status_path": "done",
+      "error_path": "error",
+      "ok_values": [true, "true"],
+      "fail_values": [],
+      "video_path": ["response.generatedVideos.0.video.uri", "response.generateVideoResponse.generatedSamples.0.video.uri"],
+      "download": "url",
+      "note": "Google 用 done 布尔值表示完成，错误在 error 字段里；返回的下载地址仍需带同一个 API Key 才能取。"
+    },
+
+    "openai": {
+      "label": "OpenAI Sora",
+      "vendor": "OpenAI",
+      "docs": "https://platform.openai.com/docs/api-reference/videos",
+      "engine": "http",
+      "auth": { "type": "bearer", "env": "OPENAI_API_KEY" },
+      "capabilities": ["text2video"],
+      "default_model": "sora-2",
+      "models": ["sora-2", "sora-2-pro"],
+      "ratio_map": { "9:16": "720x1280", "16:9": "1280x720" },
+      "create": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/videos",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "model": "{model}",
+          "prompt": "{prompt}",
+          "size": "{size}",
+          "seconds": "{duration}"
+        }
+      },
+      "task_id_path": "id",
+      "poll": {
+        "method": "GET",
+        "url": "https://api.openai.com/v1/videos/{task_id}",
+        "headers": {}
+      },
+      "status_path": "status",
+      "ok_values": ["completed"],
+      "fail_values": ["failed"],
+      "video_path": ["id"],
+      "download": "openai_content",
+      "note": "完成后要再取 /v1/videos/{id}/content 才是文件本体；脚本已内置。部分地区访问会返回 unsupported_country_region_territory。"
+    },
+
+    "runway": {
+      "label": "Runway · Gen 系列",
+      "vendor": "Runway",
+      "docs": "https://docs.dev.runwayml.com/",
+      "engine": "http",
+      "auth": { "type": "bearer", "env": "RUNWAY_API_KEY" },
+      "capabilities": ["image2video"],
+      "requires_first_frame": true,
+      "default_model": "gen4_turbo",
+      "models": ["gen4_turbo", "gen3a_turbo"],
+      "ratio_map": { "9:16": "768:1280", "16:9": "1280:768" },
+      "api_version": "2024-11-06",
+      "create": {
+        "method": "POST",
+        "url": "https://api.dev.runwayml.com/v1/image_to_video",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "model": "{model}",
+          "promptText": "{prompt}",
+          "ratio": "{size}",
+          "duration": "{duration}",
+          "promptImage": "{first_frame_url}"
+        }
+      },
+      "task_id_path": "id",
+      "poll": {
+        "method": "GET",
+        "url": "https://api.dev.runwayml.com/v1/tasks/{task_id}",
+        "headers": {}
+      },
+      "status_path": "status",
+      "ok_values": ["SUCCEEDED"],
+      "fail_values": ["FAILED", "CANCELLED"],
+      "video_path": "output.0",
+      "download": "url",
+      "note": "必须带 X-Runway-Version 头；promptImage 要传可公网访问的图片地址或 data URI。"
+    },
+
+    "luma": {
+      "label": "Luma · Dream Machine",
+      "vendor": "Luma AI",
+      "docs": "https://docs.lumalabs.ai/",
+      "engine": "http",
+      "auth": { "type": "bearer", "env": "LUMA_API_KEY" },
+      "capabilities": ["text2video", "image2video"],
+      "default_model": "ray-2",
+      "models": ["ray-2", "ray-flash-2"],
+      "ratio_map": { "9:16": "9:16", "16:9": "16:9", "1:1": "1:1" },
+      "create": {
+        "method": "POST",
+        "url": "https://api.lumalabs.ai/dream-machine/v1/generations",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "model": "{model}",
+          "prompt": "{prompt}",
+          "aspect_ratio": "{size}",
+          "duration": "{duration}s",
+          "keyframes": { "frame0": { "type": "image", "url": "{first_frame_url}" } }
+        },
+        "drop_if_empty": ["keyframes"]
+      },
+      "task_id_path": "id",
+      "poll": {
+        "method": "GET",
+        "url": "https://api.lumalabs.ai/dream-machine/v1/generations/{task_id}",
+        "headers": {}
+      },
+      "status_path": "state",
+      "ok_values": ["completed"],
+      "fail_values": ["failed"],
+      "video_path": "assets.video",
+      "download": "url"
+    },
+
+    "replicate": {
+      "label": "Replicate（含 Veo / Kling / Wan 等托管模型）",
+      "vendor": "Replicate",
+      "docs": "https://replicate.com/docs/reference/http",
+      "engine": "http",
+      "auth": { "type": "bearer", "env": "REPLICATE_API_TOKEN" },
+      "capabilities": ["text2video", "image2video"],
+      "default_model": "google/veo-3-fast",
+      "models": ["google/veo-3-fast", "kwaivgi/kling-v2.1", "wan-video/wan-2.2-t2v-fast"],
+      "create": {
+        "method": "POST",
+        "url": "https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions",
+        "headers": { "Content-Type": "application/json", "Prefer": "wait=false" },
+        "body": {
+          "input": { "prompt": "{prompt}", "aspect_ratio": "{size}", "image": "{first_frame_url}" }
+        },
+        "drop_if_empty": ["input.image"]
+      },
+      "task_id_path": "id",
+      "poll": {
+        "method": "GET",
+        "url": "https://api.replicate.com/v1/predictions/{task_id}",
+        "headers": {}
+      },
+      "status_path": "status",
+      "ok_values": ["succeeded"],
+      "fail_values": ["failed", "canceled"],
+      "video_path": ["output", "output.0"],
+      "download": "url",
+      "note": "模型名写成 owner/name；不同托管模型的入参名不一样，不对就改本文件里的 body。"
+    },
+
+    "fal": {
+      "label": "fal.ai（含 Veo / Kling / Seedance 等托管模型）",
+      "vendor": "fal.ai",
+      "docs": "https://docs.fal.ai/",
+      "engine": "http",
+      "auth": { "type": "header", "env": "FAL_KEY", "header": "Authorization", "prefix": "Key " },
+      "capabilities": ["text2video", "image2video"],
+      "default_model": "fal-ai/veo3",
+      "models": ["fal-ai/veo3", "fal-ai/kling-video/v2/master/text-to-video"],
+      "create": {
+        "method": "POST",
+        "url": "https://queue.fal.run/{model}",
+        "headers": { "Content-Type": "application/json" },
+        "body": { "prompt": "{prompt}", "aspect_ratio": "{size}" }
+      },
+      "task_id_path": "request_id",
+      "poll_url_path": "status_url",
+      "poll": {
+        "method": "GET",
+        "url": "https://queue.fal.run/{model}/requests/{task_id}/status",
+        "headers": {}
+      },
+      "result_url_path": "response_url",
+      "status_path": "status",
+      "ok_values": ["COMPLETED", "OK"],
+      "fail_values": ["FAILED", "ERROR"],
+      "video_path": ["video.url", "video.0.url", "videos.0.url"],
+      "download": "url",
+      "note": "提交后返回 status_url 与 response_url，脚本优先用返回的地址轮询与取结果。"
+    }
+  }
+}
