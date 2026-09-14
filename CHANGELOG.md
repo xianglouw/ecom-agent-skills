@@ -2,13 +2,35 @@
 
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)，日期格式 `YYYY-MM-DD`。
 
-## [v0.2.0] - 2026-09-14
+## [v0.1.0] - 2026-09-14
 
-### 新增技能
+首个公开版本：把跨境电商运营全链路拆成 **9 个可独立安装、可单独调用、可串成流水线**的 Agent 技能，每个技能自带业务手册、确定性核算脚本与风险兜底规则。装进支持 Agent Skills 约定的工具里就能直接用，运行依赖只有 Python 标准库。
 
-| 技能 | 定位 | 主要产物 |
-| --- | --- | --- |
-| `ecom-receipt-ledger` | 阶段 2B 手写单据台账 | 电子化采购/销售台账、日结与月结、算账差异清单、待映射简写清单、凭证索引（含照片缩略图） |
+覆盖 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台；线下档口与门店的手写采购/销售单据，走 `ecom-receipt-ledger` 这条台账支线。
+
+### 技能清单
+
+| 阶段 | 技能 | 定位 | 主要产物 |
+| --- | --- | --- | --- |
+| 总控 | `crossborder-ecom-ops` | 总控编排 | 阶段路由、交接字段、卡点清单、SOP 与 Prompt 模板 |
+| ① | `ecom-rules-fee` | 规则费率 | 合规费率对照表、逐单费用与净利明细、扣费风险清单 |
+| ② | `ecom-data-prep` | 数据制表 | 干净结构化表、字段覆盖率、隔离行、清洗台账 |
+| ②B | `ecom-receipt-ledger` | 手写单据台账 | 电子化采购/销售台账、日结与月结、算账差异清单、待映射简写清单、凭证索引（含照片缩略图） |
+| ③ | `ecom-selection-profit` | 选品测算 | 逐行净利明细、站点汇总、保本价与目标售价 |
+| ④ | `ecom-video-creative` | 视频素材 | 分镜脚本、文生视频提示词、前三秒留存检查、多语种语速预算 |
+| ⑤ | `ecom-ads-plan` | 广告投放 | 投放结构表、出价预算表、保本 ROAS 与止损阈值 |
+| ⑥ | `ecom-po-build` | PO 单制作 | PO 单、下单前校验报告、待人工确认清单 |
+| ⑦ | `ecom-roi-review` | ROI 复盘 | 分组复盘表、环比变化、归因链与下周动作 |
+
+### 全链路能力
+
+- 串接顺序 `规则 → 数据 → 选品 → 素材 → 投流 → PO → 复盘`，复盘结论回流修正下一轮参数；① 与 ② 可并行，④ 与 ⑥ 可并行。②B 单据台账是独立支线，随时可跑，产出的标准品名台账与采销数据可喂给 ③ 补货、⑥ 下单、⑦ 核成本。
+- 统一 JSON 输出信封（`task / status / confidence / data / flags / need_human_review / sources / assumptions / audit`），便于跨阶段串联、工单回写与事后追责。
+- 四级风险分级与人工边界：涉及资金、退款、合规、平台设置的动作只输出判定与待办，落地永远由人执行。
+- `ecom-data-prep` 支持中英双语长表头自动归一、ISO 8601 带时区日期、最多 6 位小数的账单明细金额精度。
+- `ecom-video-creative` 内置 53 个语种的语速上限与 400+ 种语种写法，支持任意目标语种本地化；前三秒留存法则逐条检查钩子强度、首帧主体、开场禁忌、字幕长度与语速预算。
+
+### 手写单据台账（`ecom-receipt-ledger`）
 
 面向「纸质存根簿 + 手写单据」的门店与档口场景，把 `拍照 → 多模态识别 → 简写标准化 → 自动算账 → 采销日结 → 凭证回链` 做成一条闭环：
 
@@ -20,52 +42,22 @@
 
 ### 表格写出器（`sheetio.py`，各技能同步）
 
+- 支持 `--out-xlsx` 一次产出多工作表 Excel 工作簿：表头加粗冻结首行、列宽自适应、数字写成数值可直接求和透视。
 - 新增**单元格超链接**支持：`hyperlinks` 参数写出 `<hyperlinks>` 与 per-sheet rels，本地文件用 `file_href()` 转 `file:///` URL。
 - 新增**图片嵌入**支持：`images` 参数按 oneCellAnchor 把图片锚进工作表（自动读 PNG/JPEG/GIF/BMP/WebP 尺寸并按框等比缩放），配套 `row_heights` 与 `column_widths` 控制版式。
 - 字段别名扩充：单据场景的 `direction` / `doc_no` / `item_raw` / `item_std` / `amount_written` / `amount_calc` / `photo_path` / `confidence` 等，以及「交易日」「业务」「进价」「件数」等真实写法。
 - 日期解析修复：`9.5` 这类「月.日」写法不再被误当作 Excel 序列号丢弃（配合 `default_year` 补年份）。
+- 产物参数跨技能统一：`--out` 主表 CSV（UTF-8 BOM）、`--out-xlsx` Excel、`--out-md` Markdown 报告、`--quarantine` 问题行、`--out-json` 输出信封。
+- 读表与报表写出均由内置 `sheetio.py` 用标准库完成，**不依赖 pandas、openpyxl**。
 
 ### 文档
 
 - 新增 [docs/run-chain.md](docs/run-chain.md)「技能运行链路」：入口判断表（用户说什么进哪个技能）、链路全景图（主链路 + ②B 支线 + 复盘回流）、逐段运行卡片（触发 / 输入 / 命令 / 产物 / 交接字段 / 人工卡点）、三种真实跑法（新品上线、门店闭店、周度复盘）、安装建议与跨阶段两条硬规则。
-- README 补充阶段 2B 与台账支线说明、Excel 超链接与图片嵌入能力、示例埋点清单；新增运行链路入口，仓库结构补上 `docs/` 与 `CHANGELOG.md`。
-- 新增 `docs/social-preview.png`：1280×640 仓库社交预览图（八阶段流水线示意）。
-- 新增 `docs/release-notes-v0.2.0.md`：本版 Release 说明。
-- README 新增「这套技能解决什么问题」对照表，用运营视角说明痛点与做法；About 文案改为一句话大白话版。
-- `.github/ABOUT.md` 更新 About 文案与 Topics：纳入第 9 个技能与台账支线搜索词（手写单据 / 拍照记账 / OCR），Topics 以 `ocr`、`bookkeeping` 替换 `wayfair`、`human-in-the-loop`；新增「技能运行链路」一段话与仓库文件索引。
-- 总控技能新增 ②B 路由与「录入类」任务分类；编排手册补充 ②B → ③/⑥/⑦ 的交接字段。
-
-## [v0.1.0] - 2026-09-14
-
-首个公开版本：把跨境电商运营全链路拆成 **8 个可独立安装、可单独调用、可串成流水线**的 Agent 技能，每个技能自带业务手册、确定性核算脚本与风险兜底规则。
-
-### 新增技能
-
-| 技能 | 定位 | 主要产物 |
-| --- | --- | --- |
-| `crossborder-ecom-ops` | 总控编排 | 阶段路由、交接字段、卡点清单、SOP 与 Prompt 模板 |
-| `ecom-rules-fee` | 阶段 1 规则费率 | 合规费率对照表、逐单费用与净利明细、扣费风险清单 |
-| `ecom-data-prep` | 阶段 2 数据制表 | 干净结构化表、字段覆盖率、隔离行、清洗台账 |
-| `ecom-selection-profit` | 阶段 3 选品测算 | 逐行净利明细、站点汇总、保本价与目标售价 |
-| `ecom-video-creative` | 阶段 4 视频素材 | 分镜脚本、文生视频提示词、前三秒留存检查、多语种语速预算 |
-| `ecom-ads-plan` | 阶段 5 广告投放 | 投放结构表、出价预算表、保本 ROAS 与止损阈值 |
-| `ecom-po-build` | 阶段 6 PO 单制作 | PO 单、下单前校验报告、待人工确认清单 |
-| `ecom-roi-review` | 阶段 7 ROI 复盘 | 分组复盘表、环比变化、归因链与下周动作 |
-
-### 全链路能力
-
-- 覆盖 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台。
-- 串接顺序 `规则 → 数据 → 选品 → 素材 → 投流 → PO → 复盘`，复盘结论回流修正下一轮参数；① 与 ② 可并行，④ 与 ⑥ 可并行。
-- 统一 JSON 输出信封（`task / status / confidence / data / flags / need_human_review / sources / assumptions / audit`），便于跨阶段串联、工单回写与事后追责。
-- 四级风险分级与人工边界：涉及资金、退款、合规、平台设置的动作只输出判定与待办，落地永远由人执行。
-- `ecom-data-prep` 支持中英双语长表头自动归一、ISO 8601 带时区日期、最多 6 位小数的账单明细金额精度。
-- `ecom-video-creative` 内置 53 个语种的语速上限与 400+ 种语种写法，支持任意目标语种本地化。
-
-### 表格产物
-
-- 所有带脚本的技能都支持 `--out-xlsx`，一次产出多工作表 Excel 工作簿（表头加粗冻结首行、列宽自适应、数字写成数值可直接求和透视）。
-- 产物参数跨技能统一：`--out` 主表 CSV（UTF-8 BOM）、`--out-xlsx` Excel、`--out-md` Markdown 报告、`--quarantine` 问题行、`--out-json` 输出信封。
-- 读表与报表写出均由内置 `sheetio.py` 用标准库完成，**不依赖 pandas、openpyxl**。
+- 新增 [docs/social-preview.png](docs/social-preview.png)：1280×640 仓库社交预览图（八阶段流水线示意）。
+- 新增 [docs/release-notes-v0.1.0.md](docs/release-notes-v0.1.0.md)：本版 Release 说明。
+- README 新增「这套技能解决什么问题」对照表，用运营视角说明六个高频痛点与对应做法；补充阶段 2B 与台账支线说明、Excel 超链接与图片嵌入能力、示例埋点清单、运行链路入口，仓库结构补上 `docs/` 与 `CHANGELOG.md`。
+- `.github/ABOUT.md` 提供 About 文案与 Topics 建议：占满 20 个标签，覆盖品类词、平台词、场景词（含手写单据 / 拍照记账 / OCR）与技术生态词；另含「技能运行链路」一段话与仓库文件索引。
+- 总控技能内置 ②B 路由与「录入类」任务分类；编排手册定义 ②B → ③/⑥/⑦ 的交接字段。
 
 ### 工程约定
 

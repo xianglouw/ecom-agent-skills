@@ -112,7 +112,7 @@ docs/social-preview.png
 | 阶段边界、交接字段、卡点与回流的完整定义 | [skills/crossborder-ecom-ops/references/workflow-orchestration.md](../skills/crossborder-ecom-ops/references/workflow-orchestration.md) |
 | 六段式 Prompt 框架、把一次作业封装成可复用 Skill、Badcase 复盘 | [skills/crossborder-ecom-ops/references/prompt-contract.md](../skills/crossborder-ecom-ops/references/prompt-contract.md) |
 | 每个版本改了什么 | [CHANGELOG.md](../CHANGELOG.md) |
-| 最新版本的发布说明（可直接贴到 Release） | [docs/release-notes-v0.2.0.md](../docs/release-notes-v0.2.0.md) |
+| 最新版本的发布说明（可直接贴到 Release） | [docs/release-notes-v0.1.0.md](../docs/release-notes-v0.1.0.md) |
 | 仓库社交预览图 | [docs/social-preview.png](../docs/social-preview.png) |
 
 ## 九、曝光自查清单
