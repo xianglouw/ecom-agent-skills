@@ -1,8 +1,8 @@
 ---
 name: crossborder-ecom-ops
-description: 跨境电商多平台运营端到端工作流，覆盖平台规则与费率检索、运营表格数据整理、选品利润与定价测算、广告视频投流方案、PO 单制作与校验、ROI 数据复盘六类任务。用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台的合规规则与费率整理、扣费风险排查、多来源表格合并清洗、售价与关税利润测算、投流脚本与投放结构设计、采购订单生成、ROAS/ACOS/TACOS 核算与周报复盘等请求。
+description: 跨境电商多平台运营端到端工作流，覆盖平台规则与费率检索、运营表格数据整理、选品利润与定价测算、多模态广告素材生产与投流、PO 单制作与校验、ROI 数据复盘六类任务。用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台的合规规则与费率整理、扣费风险排查、多来源表格合并清洗、售价与关税利润测算、广告分镜脚本与文生视频提示词设计、前三秒留存检查、投流脚本与投放结构设计、采购订单生成、ROAS/ACOS/TACOS 核算与周报复盘等请求。
 metadata:
-  short-description: 跨境电商运营六阶段自动化工作流
+  short-description: 跨境电商运营六阶段自动化工作流（含多模态素材生产与前三秒留存检查）
 ---
 
 # 跨境电商运营 Agent 工作流
@@ -14,7 +14,7 @@ metadata:
 | 1 规则信息搜集 | 多平台合规规则、费率、政策、物流规范的结构化与检索 | [references/rules-research.md](references/rules-research.md) | `scripts/fee_check.py` |
 | 2 表格数据整理 | 多来源表头归一、清洗去重、口径统一、结构化落表 | [references/data-prep.md](references/data-prep.md) | `scripts/clean_table.py` |
 | 3 选品利润测算 | 逐站点算售价、佣金、运费、关税与净利，反算保本价与目标售价 | [references/selection-profit.md](references/selection-profit.md) | `scripts/selection_profit.py` |
-| 4 广告视频投流 | 投放结构、素材脚本、出价预算、测品与止损规则 | [references/ads-video.md](references/ads-video.md) | — |
+| 4 广告视频生产与投流 | 多模态素材生产（分镜、生成提示词、前三秒留存检查）+ 投放结构、出价预算与止损 | [references/video-production.md](references/video-production.md) / [references/ads-video.md](references/ads-video.md) | `scripts/video_brief.py` |
 | 5 PO 单制作 | 需求表/报价表 → 可执行的采购订单 + 校验 | [references/po-creation.md](references/po-creation.md) | `scripts/po_build.py` |
 | 6 ROI 数据复盘 | 指标核算、分组对比、归因、周报与下周动作 | [references/roi-review.md](references/roi-review.md) | `scripts/roi_review.py` |
 
@@ -41,7 +41,7 @@ Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法�
 | 任务类型 | 本 skill 中的场景 | AI 执行范围 | 人工介入 |
 |---|---|---|---|
 | 检索类 | 规则、费率、公告、物流规范查询 | 全自动检索 + 强制引用来源 | 抽样复核 |
-| 生成类 | 投流脚本、素材分镜、SOP、周报 | 全自动生成 + 结构化输出 | 发布前确认 |
+| 生成类 | 投流脚本、素材分镜与生成提示词、SOP、周报 | 全自动生成 + 结构化输出 | 发布前确认 |
 | 流程类 | PO 单、工单、数据回写 | 生成 + 校验 + 待办清单 | 提交/付款终审 |
 | 分析类 | ROI/ROAS/毛利/异常归因、选品定价与保本测算 | 核算 + 异常标记 + 归因链 | 高风险结论复核 |
 
@@ -51,7 +51,7 @@ Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法�
 
 ```json
 {
-  "task": "fee_check | clean_table | selection_profit | ads_plan | po_build | roi_review",
+  "task": "fee_check | clean_table | selection_profit | video_brief | po_build | roi_review",
   "status": "ok | partial | blocked",
   "confidence": 0.0,
   "data": {},
@@ -73,15 +73,15 @@ Prompt 结构、统一输出 Schema、场景封装成可复用 Skill 的方法�
 
 | 等级 | 场景示例 | AI 权限 | 人工权限 |
 |---|---|---|---|
-| 高 | 退款审批、付款下单、超阈值预算、改价、合规申诉、正毛利被判亏损、新供应商首单、选品净利为负、跨关税门槛定价 | 只出判定 + 依据 + 待办 | 终审并执行 |
-| 中 | 费率未覆盖、口径不一致、环比异常波动、政策过渡期、含税口径不明、运费分段未覆盖、低于目标毛利 | 出结论 + 风险标注 | 抽样复核 |
+| 高 | 退款审批、付款下单、超阈值预算、改价、合规申诉、正毛利被判亏损、新供应商首单、选品净利为负、跨关税门槛定价、素材命中禁用词、市场风格缺失 | 只出判定 + 依据 + 待办 | 终审并执行 |
+| 中 | 费率未覆盖、口径不一致、环比异常波动、政策过渡期、含税口径不明、运费分段未覆盖、低于目标毛利、前 3 秒口播超长 | 出结论 + 风险标注 | 抽样复核 |
 | 低 | 字段清洗、格式转换、指标核算、脚本草稿、表格汇总 | 直接执行 | 事后抽查 |
 
 ## 脚本
 
 统一只用 Python 标准库（不需要 pandas / openpyxl，`.xlsx` 由内置读取器解析），列名支持中英文别名自动识别，识别不到时用 `--map 原列名=标准字段`。脚本只做确定性计算与校验，不调用平台接口，除 `--out*` 指定路径外不写任何文件。
 
-产物参数五个脚本一致：`--out` 主表 CSV、`--out-json` 输出信封、`--out-md` Markdown 报告、`--quarantine` 被隔离的问题行 CSV。信封默认打到 stdout，加 `--out-json` 时同一份内容落盘（含 `blocked` 在内的所有路径都写），下游直接读文件即可。
+产物参数六个脚本一致：`--out` 主表 CSV、`--out-json` 输出信封、`--out-md` Markdown 报告、`--quarantine` 被隔离的问题行 CSV。信封默认打到 stdout，加 `--out-json` 时同一份内容落盘（含 `blocked` 在内的所有路径都写），下游直接读文件即可。
 
 ```bash
 # 阶段 1：费率核算 + 扣费风险标记
@@ -99,6 +99,11 @@ python3 scripts/selection_profit.py items.csv --freight freight.csv --freight-he
   --de-minimis 50 --duty-rate 0.16 --target-margin 0.3 --channel both \
   --out selection.csv --out-md selection.md --out-json selection.json
 
+# 阶段 4：多模态素材生产（分镜 + 生成提示词 + 前三秒留存检查）
+python3 scripts/video_brief.py products.csv --styles 市场风格库.csv --hooks 钩子模板库.csv \
+  --banned 禁用词表.csv --duration 15 --ratio 9:16,16:9 --hooks-per-sku 2 \
+  --out storyboard.csv --out-md brief.md --out-json brief.json
+
 # 阶段 5：PO 单生成 + 校验
 python3 scripts/po_build.py sourcing.csv --supplier "供应商A" --currency USD --lead-time 30 \
   --out PO.csv --out-json PO.json [--po-no PO-20260914-001] [--max-amount 5000]
@@ -108,7 +113,7 @@ python3 scripts/roi_review.py 投放明细.xlsx --group-by campaign --compare �
   --out-md review.md --out-json review.json [--gross-margin 0.35]
 ```
 
-选品测算的汇率、佣金率、关税门槛全部来自命令行参数，脚本不内置任何费率；缺税率、缺重量、重量超出运费分段、缺汇率都会落成 `flags` 并按站点聚合，不会静默跳过。
+选品测算的汇率、佣金率、关税门槛全部来自命令行参数，脚本不内置任何费率；缺税率、缺重量、重量超出运费分段、缺汇率都会落成 `flags` 并按站点聚合，不会静默跳过。素材 brief 的地区风格一律取自市场风格库，风格库缺失的市场直接标 high；文案里需要创意填空的位置写成 `{{待填:字段}}` 显式暴露，不替你编造卖点与场景。
 
 先用 `--help` 看完整参数。
 
