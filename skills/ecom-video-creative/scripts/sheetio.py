@@ -422,16 +422,25 @@ _XLSX_BAD_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
 _XLSX_STYLES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
-<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
+<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFCE4E4"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="3">
+<cellXfs count="5">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"><alignment vertical="center"/></xf>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/>
+<xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1"/>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>"""
+
+# 单元格高亮样式编号：3 = 黄色（需复核），4 = 红色（异常/未读准）
+HIGHLIGHT_WARN = 3
+HIGHLIGHT_ALERT = 4
+HIGHLIGHT_LEVELS = {"warn": HIGHLIGHT_WARN, "yellow": HIGHLIGHT_WARN, "todo": HIGHLIGHT_WARN,
+                    "alert": HIGHLIGHT_ALERT, "error": HIGHLIGHT_ALERT, "red": HIGHLIGHT_ALERT,
+                    "high": HIGHLIGHT_ALERT}
 
 
 def _xml_text(value):
@@ -478,33 +487,41 @@ def _numeric_text(value):
         return None
 
 
-def _xlsx_cell(reference, value, coerce_numbers=False):
+def _xlsx_cell(reference, value, coerce_numbers=False, style=None):
     """写单元格：数字按数字写（Excel 可直接求和），文本用内联字符串，空值留空。
 
     coerce_numbers 打开时，形如 `1234.50` 的纯数值文本也会写成数字，
     便于清洗类产物在 Excel 里直接求和与做透视；`007`、超长条码不受影响。
+    style 传 HIGHLIGHT_WARN / HIGHLIGHT_ALERT 时给单元格加底色（低置信、金额不符等
+    需要人眼复核的格子）；空值加底色时同样写出空单元格，否则底色不显示。
     """
+    attributes = f' s="{style}"' if style else ""
     if value is None or value == "":
-        return ""
+        return f'<c r="{reference}"{attributes}/>' if style else ""
     if isinstance(value, bool):
-        return f'<c r="{reference}" t="b"><v>{1 if value else 0}</v></c>'
+        return f'<c r="{reference}"{attributes} t="b"><v>{1 if value else 0}</v></c>'
     if isinstance(value, (int, float)):
-        return f'<c r="{reference}"><v>{value!r}</v></c>'
+        return f'<c r="{reference}"{attributes}><v>{value!r}</v></c>'
     if coerce_numbers:
         number = _numeric_text(value)
         if number is not None:
-            return f'<c r="{reference}"><v>{number!r}</v></c>'
+            return f'<c r="{reference}"{attributes}><v>{number!r}</v></c>'
     if isinstance(value, (datetime.date, datetime.datetime)):
         value = value.isoformat()
     text = _xml_text(value)
-    style = ' s="2"' if len(str(value)) > 28 else ""
-    return f'<c r="{reference}"{style} t="inlineStr"><is><t xml:space="preserve">{text}</t></is></c>'
+    style_attribute = attributes or (' s="2"' if len(str(value)) > 28 else "")
+    return f'<c r="{reference}"{style_attribute} t="inlineStr"><is><t xml:space="preserve">{text}</t></is></c>'
 
 
 def _xlsx_sheet_xml(headers, rows, widths, coerce_numbers=False, hyperlinks=None, drawing_rid=None,
-                    row_heights=None):
+                    row_heights=None, highlights=None):
     hyperlinks = hyperlinks or []
     row_heights = row_heights or {}
+    marked = {}
+    for ref, style_id in (highlights or {}).items():
+        digits = "".join(char for char in ref if char.isdigit())
+        if digits:
+            marked[(int(digits), _col_index(ref) + 1)] = style_id
     parts = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>']
     root = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
     if hyperlinks or drawing_rid:
@@ -525,7 +542,8 @@ def _xlsx_sheet_xml(headers, rows, widths, coerce_numbers=False, hyperlinks=None
                         for col, header in enumerate(headers, start=1))
         parts.append(f'<row r="1" s="1" customFormat="1">{cells}</row>')
     for offset, row in enumerate(rows, start=2):
-        cells = "".join(_xlsx_cell(f"{_col_letter(col)}{offset}", value, coerce_numbers)
+        cells = "".join(_xlsx_cell(f"{_col_letter(col)}{offset}", value, coerce_numbers,
+                                   marked.get((offset, col)))
                         for col, value in enumerate(row, start=1))
         height = row_heights.get(offset)
         attributes = f' ht="{float(height):g}" customHeight="1"' if height else ""
@@ -613,11 +631,14 @@ def write_xlsx(path, sheets):
               "hyperlinks": [{"ref": "L2", "target": "file:///...", "tooltip": ""}, ...],
               "images": [{"path": ..., "row": 2, "col": 6, "max_width": 160, "max_height": 120}, ...],
               "row_heights": {2: 90}, "column_widths": {6: 23},
+              "highlights": [{"ref": "I5", "level": "warn"}, {"ref": "J7", "level": "alert"}, ...],
               "image_max_width": 160, "image_max_height": 120}, ...]
     数字按数字写（Excel 里能直接求和、做透视），文本走内联字符串，表头加粗并冻结首行，
     列宽按内容自适应，长文本单元格自动换行。表级 coerce_numbers 打开时，纯数值文本
     也按数字写。hyperlinks 写成可点击的单元格超链接（本地文件用 file_href() 转 URL），
     images 把图片按锚点嵌进工作表（凭证缩略图用，行号列号都是 1 基）。
+    highlights 给指定单元格加底色（level 传 warn 为黄底、alert 为红底），用来把
+    「识别置信度低」「金额不符」这类需要人眼复核的格子直接标在表里。
     不需要 pandas / openpyxl。
     """
     prepared = []
@@ -628,6 +649,15 @@ def write_xlsx(path, sheets):
         rows = [list(row) for row in sheet.get("rows") or []]
         if not headers and not rows:
             continue
+        highlights = {}
+        for item in sheet.get("highlights") or []:
+            if not isinstance(item, dict):
+                continue
+            ref = str(item.get("ref") or "").strip()
+            if not ref:
+                continue
+            level = str(item.get("level") or item.get("style") or "warn").strip().lower()
+            highlights[ref] = HIGHLIGHT_LEVELS.get(level, HIGHLIGHT_WARN)
         hyperlinks = []
         for item in sheet.get("hyperlinks") or []:
             if isinstance(item, dict):
@@ -646,6 +676,7 @@ def write_xlsx(path, sheets):
                          "max_image_width": sheet.get("image_max_width") or 160,
                          "max_image_height": sheet.get("image_max_height") or 120,
                          "row_heights": {int(key): value for key, value in (sheet.get("row_heights") or {}).items()},
+                         "highlights": highlights,
                          "column_widths": {int(key): float(value)
                                            for key, value in (sheet.get("column_widths") or {}).items()}})
     if not prepared:
@@ -774,7 +805,7 @@ def write_xlsx(path, sheets):
                                                           overrides=sheet["column_widths"]),
                                              sheet["coerce"], sheet["hyperlinks"],
                                              drawing["rid"] if drawing else None,
-                                             sheet["row_heights"]))
+                                             sheet["row_heights"], sheet["highlights"]))
             if sheet["hyperlinks"] or drawing:
                 archive.writestr(f"xl/worksheets/_rels/sheet{index}.xml.rels",
                                  sheet_rels_xml(sheet, drawing, sheet_drawing_number))

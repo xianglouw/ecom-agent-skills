@@ -9,6 +9,7 @@ PY=${PYTHON:-python3}
 
 echo "== 场景一：一天的账，从 8 张手写单据照片到日结台账 =="
 "$PY" "$S/receipt_ledger.py" receipts_raw.csv --alias alias_map.csv \
+  --price-ref price_ref.csv \
   --photos-dir photos --embed-photos --default-year 2026 \
   --out out/ledger.csv --out-xlsx out/ledger.xlsx --out-md out/ledger.md \
   --out-json out/ledger.json --quarantine out/bad_rows.csv > /dev/null
@@ -23,6 +24,11 @@ print('  采销总账：采购 %.2f ｜ 销售 %.2f ｜ 净收益 %.2f（%.1f%%�
 print('  算账校验：', {k: v for k, v in d['calc_check'].items() if k != 'mismatch_amount'})
 print('  简写命中 %d 条、未命中 %d 条；凭证关联 %d 张、缺 %d 张'
       % (d['alias']['matched'], d['alias']['unmatched'], d['photos']['linked'], d['photos']['missing']))
+print('  价格核对：命中 %d 笔、偏离 %d 笔、价格库未收录 %d 笔'
+      % (d['price_check']['hit'], d['price_check']['outlier'], d['price_check']['missing']))
+print('  识别加固：低置信 %d 笔、带候选值 %d 笔；补拍清单 %d 行 / %d 张照片'
+      % (d['confidence']['low'], d['confidence']['with_candidates'],
+         d['reshoot']['rows'], d['reshoot']['photos']))
 print('  状态:', e['status'], '｜ 置信度:', e['confidence'], '｜ 需人工复核:', e['need_human_review'])
 for f in e['flags']:
     print('  [%s] %s：%s' % (f['level'], f['type'], f['detail'][:64]))
@@ -38,7 +44,8 @@ echo "== 场景二：别家写法（交易日/业务/票号/进价）+ 照片存
 "$PY" -c "
 import csv
 rows = list(csv.reader(open('receipts_raw.csv', encoding='utf-8-sig')))
-rows[0] = ['交易日', '业务', '票号', '手写品名', '规格', '件数', '进价', '票面金额', '拍的图', '识别度', '备注']
+rows[0] = ['交易日', '业务', '票号', '手写品名', '规格', '件数', '进价', '票面金额', '拍的图', '识别度',
+           '备注', '候选']
 with open('out/renamed_input.csv', 'w', encoding='utf-8-sig', newline='') as fh:
     csv.writer(fh).writerows(rows)
 "
@@ -61,4 +68,6 @@ ls out | sed 's/^/  /'
 echo "看台账：    head out/ledger.csv"
 echo "看对账报告：cat out/ledger.md"
 echo "看隔离行：  cat out/bad_rows.csv"
-echo "看 Excel：  打开 out/ledger.xlsx —— 单据明细 / 日结 / 月结 / 异常行 / 待映射简写 / 凭证索引（含照片缩略图）"
+echo "看补拍清单：head out/ledger.csv 第 21 列是候选值；Excel 的「补拍清单」按照片列出要重拍哪一行"
+echo "看 Excel：  打开 out/ledger.xlsx —— 单据明细 / 日结 / 月结 / 异常行 / 待映射简写 / 补拍清单 / 价格核对 / 凭证索引"
+echo "            （明细里黄底=要复核、红底=异常或没读准，凭证索引含照片缩略图）"
