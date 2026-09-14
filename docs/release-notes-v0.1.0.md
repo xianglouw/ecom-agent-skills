@@ -40,7 +40,7 @@
 - 复盘结论回流，修正下一轮的选品参数与素材方向
 - ① 与 ② 可并行，④ 与 ⑥ 可并行
 
-**完整运行链路**（入口判断表、链路全景图、逐段运行卡片、三种真实跑法）见 [docs/run-chain.md](docs/run-chain.md)。
+**完整运行链路**（入口判断表、链路全景图、逐段运行卡片、三种真实跑法）见 [技能运行链路](https://github.com/xianglouw/ecom-agent-skills/blob/main/docs/run-chain.md)。
 
 ## 手写单据台账（本版亮点）
 
