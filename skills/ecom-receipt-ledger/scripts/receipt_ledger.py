@@ -41,7 +41,7 @@ MONTHLY_HEADERS = ["月份", "采购笔数", "采购金额", "销售笔数", "�
 ISSUE_HEADERS = ["行号", "日期", "业务方向", "手写原文", "手写金额", "系统金额", "差异", "问题", "建议动作"]
 ALIAS_HEADERS = ["手写原文", "出现次数", "涉及金额", "示例日期", "建议动作"]
 PHOTO_HEADERS = ["日期", "单据号", "业务方向", "手写原文", "金额", "凭证文件", "缩略图", "凭证状态"]
-RESHOOT_HEADERS = ["凭证文件", "单据号", "日期", "涉及行号", "待确认字段", "原因", "建议动作"]
+RESHOOT_HEADERS = ["凭证文件", "单据号", "日期", "行号", "手写原文", "待确认字段", "原因", "建议动作"]
 PRICE_HEADERS = ["行号", "日期", "手写原文", "标准品名", "数量", "单价", "参考单价", "偏差", "核对结果", "建议动作"]
 
 PRICE_HIT = "命中区间"
@@ -444,13 +444,16 @@ def build_reshoot_groups(rows, quarantined, args):
     def bucket(name):
         key = name or "（缺凭证照片）"
         return groups.setdefault(key, {"photo": key, "doc_no": [], "date": [],
-                                       "rows": [], "fields": [], "reasons": []})
+                                       "rows": [], "fields": [], "reasons": [], "items": []})
 
     for item in quarantined:
         entry = bucket(item.get("photo"))
         entry["rows"].append(item["row"])
-        entry["fields"].append(item.get("fields") or "整行")
+        fields_text = item.get("fields") or "整行"
+        entry["fields"].append(fields_text)
         entry["reasons"].append(item["reason"])
+        entry["items"].append({"row": item["row"], "item_raw": item.get("item_raw", ""),
+                               "fields": fields_text, "reason": item["reason"]})
         if item.get("doc_no"):
             entry["doc_no"].append(item["doc_no"])
         if item.get("date"):
@@ -479,18 +482,24 @@ def build_reshoot_groups(rows, quarantined, args):
         entry["rows"].append(row["row"])
         entry["fields"].append("、".join(fields))
         entry["reasons"].append("；".join(reasons))
+        entry["items"].append({"row": row["row"], "item_raw": row["item_raw"],
+                               "fields": "、".join(fields), "reason": "；".join(reasons)})
         if row["doc_no"]:
             entry["doc_no"].append(row["doc_no"])
         if row["date"]:
             entry["date"].append(row["date"])
 
-    lines, total = [], 0
+    # 两个视角各留一份：groups 是「一张照片一条」的总览（给 Markdown 报告用），
+    # sheet 是「一行一个待办」的清单（给拍摄的人看，Excel 里每格都短、能逐条打勾）。
+    lines, sheet, total = [], [], 0
     for key in sorted(groups):
         item = groups[key]
         total += len(item["rows"])
         row_text = "、".join(str(value) for value in item["rows"])
         fields = "、".join(dict.fromkeys(part for part in item["fields"] if part))
         reasons = "；".join(dict.fromkeys(part for part in item["reasons"] if part))
+        doc_text = "、".join(dict.fromkeys(item["doc_no"]))
+        date_text = "、".join(dict.fromkeys(item["date"]))
         if item["photo"].startswith("（"):
             action = "先补拍这张单据（表里没关联到照片），再重跑"
         elif len(item["rows"]) > 5:
@@ -498,10 +507,13 @@ def build_reshoot_groups(rows, quarantined, args):
         else:
             action = f"对第 {row_text} 行单独拍一张特写（镜头靠近、对焦在该行）"
         lines.append({"photo": item["photo"],
-                      "doc_no": "、".join(dict.fromkeys(item["doc_no"])),
-                      "date": "、".join(dict.fromkeys(item["date"])),
+                      "doc_no": doc_text, "date": date_text,
                       "rows": row_text, "fields": fields, "reasons": reasons, "action": action})
-    return {"groups": lines, "rows": total}
+        for detail in item["items"]:
+            sheet.append({"photo": item["photo"], "doc_no": doc_text, "date": date_text,
+                          "row": detail["row"], "item_raw": detail["item_raw"],
+                          "fields": detail["fields"], "reason": detail["reason"], "action": action})
+    return {"groups": lines, "rows": total, "sheet": sheet}
 
 
 def write_markdown(path, args, rows, day_rows, month_rows, quarantined, unmatched, issues, totals):
@@ -683,20 +695,7 @@ def main(argv=None):
                     out_json=args.out_json)
         return 2
     rows, quarantined, unmatched, issues = build_rows(headers, body, columns, args, mapping, price_ref)
-    if not rows:
-        if quarantined and args.quarantine:
-            write_csv(args.quarantine, ["行号", "日期", "业务方向", "手写原文", "手写金额", "隔离原因"],
-                      [[item["row"], item["date"], item["direction"], item["item_raw"],
-                        show(item["written"]), item["reason"]] for item in quarantined])
-        sheetio.emit(sheetio.make_envelope(
-            "receipt_ledger", "blocked", 0.0,
-            {"input": args.input, "rows_in": len(body), "rows_out": 0, "quarantined": len(quarantined),
-             "detected_columns": sorted(columns), "quarantined_sample": quarantined[:10]},
-            [sheetio.flag("high", "all_rows_quarantined",
-                          f"{len(body)} 行全部被隔离，没有一笔能入账",
-                          "看隔离原因：多半是日期或采购/销售方向没识别到；用 --map 指定这两列")]),
-            out_json=args.out_json)
-        return 2
+    all_quarantined = not rows
     day_rows, month_rows = summarize(rows)
 
     totals = {
@@ -733,6 +732,13 @@ def main(argv=None):
     reshoot = build_reshoot_groups(rows, quarantined, args)
 
     flags = []
+    if all_quarantined:
+        # 一笔都没入账时不能只丢一句「全被隔离」就走人：这正是最需要补拍清单的时候，
+        # 所以照常出表（明细为空、日结为空），只是状态标 blocked。
+        flags.append(sheetio.flag("high", "all_rows_quarantined",
+                                  f"{len(body)} 行全部被隔离，没有一笔能入账",
+                                  "按「补拍清单」逐张重拍或人工补录后重跑；报表已按 0 笔生成，"
+                                  "先看隔离原因里是不是日期或采购/销售方向没识别到"))
     if quarantined:
         buckets = {"日期/方向读不出": 0, "字迹没读准（候选值或低置信度）": 0, "品名与金额都空": 0}
         for item in quarantined:
@@ -805,6 +811,8 @@ def main(argv=None):
 
     levels = {item["level"] for item in flags}
     confidence = 0.95
+    if all_quarantined:
+        confidence = 0.0
     if "high" in levels:
         confidence = min(confidence, 0.68)
     elif "medium" in levels:
@@ -813,7 +821,8 @@ def main(argv=None):
         confidence = min(confidence, 0.9)
 
     envelope = sheetio.make_envelope(
-        "receipt_ledger", "partial" if flags else "ok", confidence,
+        "receipt_ledger",
+        "blocked" if all_quarantined else ("partial" if flags else "ok"), confidence,
         {"input": args.input, "rows_in": len(body), "rows_out": len(rows),
          "quarantined": len(quarantined), "date_range": [totals["first_date"], totals["last_date"]],
          "days": len(day_rows),
@@ -846,6 +855,12 @@ def main(argv=None):
         + ([{"ref": f"{args.price_ref}（历史价格库）", "as_of": totals["last_date"] or ""}]
            if args.price_ref else []),
         assumptions=totals["assumptions"])
+
+    if all_quarantined:
+        envelope["data"]["detected_columns"] = sorted(columns)
+        envelope["data"]["quarantined_sample"] = [
+            {"row": item["row"], "item_raw": item["item_raw"], "reason": item["reason"]}
+            for item in quarantined[:10]]
 
     if args.quarantine and quarantined:
         write_csv(args.quarantine, ["行号", "日期", "业务方向", "手写原文", "手写金额", "隔离原因"],
@@ -906,8 +921,8 @@ def main(argv=None):
                    row["price_check"], PRICE_ACTION.get(row["price_check"], "")]
                   for row in sorted(rows, key=lambda item: 0 if item["price_check"] == PRICE_OUT else 1)
                   if row["price_check"]]
-    reshoot_rows = [[item["photo"], item["doc_no"], item["date"], item["rows"], item["fields"],
-                     item["reasons"], item["action"]] for item in reshoot["groups"]]
+    reshoot_rows = [[item["photo"], item["doc_no"], item["date"], item["row"], item["item_raw"],
+                     item["fields"], item["reason"], item["action"]] for item in reshoot["sheet"]]
 
     if args.out_xlsx:
         photo_rows, photo_hyperlinks, photo_images, row_heights = [], [], [], {}
@@ -953,7 +968,7 @@ def main(argv=None):
                        "在 alias-dictionary 里补一行标准品名"] for item in
                       sorted(unmatched.values(), key=lambda value: -value["count"])]},
             {"name": "补拍清单", "headers": RESHOOT_HEADERS, "rows": reshoot_rows,
-             "column_widths": {1: 26, 5: 30, 6: 46, 7: 40}},
+             "column_widths": {1: 26, 5: 24, 6: 30, 7: 46, 8: 40}},
             {"name": "价格核对", "headers": PRICE_HEADERS, "rows": price_rows,
              "column_widths": {3: 26, 4: 30, 10: 42}},
             {"name": "凭证索引", "headers": PHOTO_HEADERS, "rows": photo_rows,
