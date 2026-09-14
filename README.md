@@ -1,10 +1,10 @@
 # ecom-agent-skills
 
-> Cross-border e-commerce agent skills — a 7-stage AI workflow: platform rules & fees → data cleaning → product selection → video creative → ads planning → PO build → ROI review. Works with Amazon, Shopee, TikTok Shop, Temu, Lazada, Wayfair and Mercado Libre.
+> Cross-border e-commerce agent skills — a 7-stage AI workflow (platform rules & fees → data cleaning → product selection → video creative → ads planning → PO build → ROI review) plus a handwritten-receipt ledger track for offline shops. Works with Amazon, Shopee, TikTok Shop, Temu, Lazada, Wayfair and Mercado Libre.
 
 面向跨境电商多平台运营的 Agent 技能集。把运营全链路拆成**可独立安装、可单独调用、可串成流水线**的技能：每个技能自带业务手册、可执行的核算脚本和风险兜底规则，装进支持 Agent Skills 约定的工具里就能直接用。
 
-适用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台。
+适用于 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等平台；线下档口与门店的手写采购/销售单据，走 `ecom-receipt-ledger` 这条台账支线。
 
 ## 技能清单
 
@@ -16,6 +16,7 @@
 | `ecom-selection-profit` | 选品测算 — 多站点多币种逐行净利、保本价与目标售价反算，标记亏损组合 |
 | `ecom-video-creative` | 视频生成 — 分镜、文生视频提示词、前三秒留存检查、任意语种本地化与语速预算 |
 | `ecom-ads-plan` | 广告投放 — 投放结构、出价预算、保本 ROAS、放量节奏与止损判优规则 |
+| `ecom-receipt-ledger` | 单据台账 — 手写采购/销售单据识别结构化、简写标准化、自动算账与采销日结，凭证照片回链 |
 | `ecom-po-build` | PO 单制作 — 采购订单生成与下单前校验：金额、MOQ、单位、币种、交期与审批阈值 |
 | `ecom-roi-review` | 数据复盘 — ROAS/ACOS/TACOS 核算、分组环比、异常归因与复盘周报 |
 
@@ -26,13 +27,14 @@
 | 总控层 | 全链路 | `crossborder-ecom-ops` | 阶段路由、交接字段、卡点清单、SOP 与 Prompt 模板 |
 | 数据底座 | ① 规则信息搜集 | `ecom-rules-fee` | 合规费率对照表、逐单费用与净利明细、扣费风险清单 |
 | 数据底座 | ② 表格数据整理 | `ecom-data-prep` | 干净结构化表、字段覆盖率、隔离行与清洗台账 |
+| 数据底座 | ②B 手写单据台账 | `ecom-receipt-ledger` | 电子化采购/销售台账、日结与月结、算账差异清单、凭证照片回链 |
 | 决策层 | ③ 选品利润测算 | `ecom-selection-profit` | 逐行测算明细、站点汇总、保本价与目标售价 |
 | 增长层 | ④ 视频素材生产 | `ecom-video-creative` | 分镜脚本、生成提示词、前三秒检查、多语种语速预算 |
 | 增长层 | ⑤ 广告投放 | `ecom-ads-plan` | 投放结构表、出价预算表、止损判优阈值表 |
 | 履约层 | ⑥ PO 单制作 | `ecom-po-build` | PO 单、校验报告、待人工确认清单 |
 | 复盘层 | ⑦ ROI 数据复盘 | `ecom-roi-review` | 分组复盘表、环比变化、归因链与下周动作 |
 
-串联顺序：`规则 → 数据 → 选品 → 素材 → 投流 → PO → 复盘`，复盘结论回流修正下一轮的选品参数与素材方向。① 与 ② 可并行，④ 与 ⑥ 可并行。完整编排说明见 [workflow-orchestration.md](skills/crossborder-ecom-ops/references/workflow-orchestration.md)。
+串联顺序：`规则 → 数据 → 选品 → 素材 → 投流 → PO → 复盘`，复盘结论回流修正下一轮的选品参数与素材方向。① 与 ② 可并行，④ 与 ⑥ 可并行；②B 单据台账是独立支线，随时可跑，产出的标准品名台账可以直接喂给 ③ 与 ⑦。完整编排说明见 [workflow-orchestration.md](skills/crossborder-ecom-ops/references/workflow-orchestration.md)。
 
 ## 安装
 
@@ -71,12 +73,13 @@ python3 scripts/selection_profit.py items.csv --freight freight.csv \
 |---|---|
 | `ecom-rules-fee` | 费用明细 / 核算总计 / 未匹配订单 / 费率覆盖情况 |
 | `ecom-data-prep` | 清洗结果 / 隔离行 / 字段覆盖率 / 清洗台账 |
+| `ecom-receipt-ledger` | 单据明细 / 日结 / 月结 / 异常行 / 待映射简写 / 凭证索引 |
 | `ecom-selection-profit` | 测算明细 / 站点汇总 / 亏损与低毛利 / 未测算 |
 | `ecom-video-creative` | 素材总表 / 分镜 / 语速预算 / 问题清单 |
 | `ecom-po-build` | PO 明细 / 订单信息 / 隔离行 |
 | `ecom-roi-review` | 分组复盘 / 核心指标 / 环比变化 |
 
-工作簿由内置写出器生成：表头加粗并冻结首行、列宽按内容自适应、长文本自动换行；**数字写成数值而不是文本**，打开就能直接求和、排序和做透视表。Excel 和 WPS 都能直接打开，不需要装任何插件。
+工作簿由内置写出器生成：表头加粗并冻结首行、列宽按内容自适应、长文本自动换行；**数字写成数值而不是文本**，打开就能直接求和、排序和做透视表。还支持**单元格超链接**（本地文件或云端地址）与**图片嵌入**——手写单据台账的凭证照片就是这样钉在每一行数据旁边的。Excel 和 WPS 都能直接打开，不需要装任何插件。
 
 同一套工具也用来**读** `.xlsx`：输入文件可以是 Excel，`--sheet` 支持传工作表名（不只是序号）。
 
@@ -87,6 +90,7 @@ python3 scripts/selection_profit.py items.csv --freight freight.csv \
 ```bash
 cd ecom-agent-skills/skills/ecom-rules-fee/examples     && ./demo.sh   # 费率核算与扣费风险
 cd ecom-agent-skills/skills/ecom-data-prep/examples     && ./demo.sh   # 表格清洗与隔离
+cd ecom-agent-skills/skills/ecom-receipt-ledger/examples && ./demo.sh  # 手写单据日结与凭证回链
 cd ecom-agent-skills/skills/ecom-selection-profit/examples && ./demo.sh # 选品利润测算
 cd ecom-agent-skills/skills/ecom-video-creative/examples   && ./demo.sh # 素材分镜与前三秒检查
 cd ecom-agent-skills/skills/ecom-po-build/examples      && ./demo.sh   # PO 单生成与校验
@@ -103,6 +107,7 @@ cd ecom-agent-skills/skills/ecom-roi-review/examples    && ./demo.sh   # ROI 复
 - **视频素材**：7 个产品 × 7 个市场 = 14 条素材、70 行分镜，前三秒 8 条通过、6 条口播讲不完——钩子库里 H01/H03/H04/H05 的口播刻意写长了，语速拦截不是摆设；覆盖英、西、葡、越、日、泰六个目标语种，无高风险阻塞。
 - **PO 单**：5 行明细合计 42940 USD，金额不符 1 行、重复行 1 组、低于 MOQ 1 行、超审批上限 1 项，高风险 3 项。
 - **ROI 复盘**：3 个分组，ROAS 1.43、净利 -4423、保本 ROAS 2.92，4 项高风险待复核、7 项环比告警。
+- **单据台账**：8 张手写单据照片、17 行明细，入账 16 笔（隔离 1 行）、5 天日结、净收益 1270；2 笔金额与「数量×单价」不符、1 笔单据没写金额、1 条简写没收录、1 行疑似重复、1 张照片没归档——每一类都有对应产物接住。
 
 ### 多语种覆盖
 
@@ -135,6 +140,7 @@ ecom-agent-skills/
     │       └── workflow-orchestration.md  阶段边界、交接字段、卡点与回流
     ├── ecom-rules-fee/                阶段 1 规则费率
     ├── ecom-data-prep/                阶段 2 数据制表
+    ├── ecom-receipt-ledger/           阶段 2B 手写单据台账（含示例单据照片 photos/）
     ├── ecom-selection-profit/         阶段 3 选品测算
     ├── ecom-video-creative/           阶段 4 视频素材
     ├── ecom-ads-plan/                 阶段 5 广告投放
@@ -182,6 +188,7 @@ A collection of agent skills for cross-border e-commerce operations, split by wo
 | `crossborder-ecom-ops` | Orchestration — seven-stage routing, hand-off contracts, human-in-the-loop boundaries, prompt engineering playbook |
 | `ecom-rules-fee` | Rules & fees — multi-platform fee/compliance lookup, rate tables, per-order charge and margin checks |
 | `ecom-data-prep` | Data prep — header normalization, dedup, validation, quarantine, clean structured tables |
+| `ecom-receipt-ledger` | Receipt ledger — handwritten receipt capture into structured rows, alias normalization, auto-reconciliation, daily purchase/sale close with photo evidence |
 | `ecom-selection-profit` | Selection & pricing — per-site, multi-currency profit modeling, breakeven and target price |
 | `ecom-video-creative` | Video creative — storyboards, text-to-video prompts, first-3-second retention checks, any target language |
 | `ecom-ads-plan` | Ads planning — campaign structure, bids and budgets, breakeven ROAS, scale-up and stop-loss rules |

@@ -1,0 +1,4 @@
+interface:
+  display_name: "手写单据电子化台账"
+  short_description: "手写单据识别结构化、简写标准化、自动算账与采购销售日结，凭证照片回链到每一行"
+  default_prompt: "Use $ecom-receipt-ledger to turn handwritten purchase/sale receipts into a reconciled daily ledger with photo evidence attached to every row."

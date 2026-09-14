@@ -1,6 +1,6 @@
 ---
 name: crossborder-ecom-ops
-description: 跨境电商多平台运营端到端工作流总控技能，负责阶段路由与人机协作编排：把「规则检索 → 表格整理 → 选品测算 → 视频素材 → 广告投流 → PO 单 → ROI 复盘」七个阶段串成一条流水线，统一输出信封、风险分级、人机边界与 Prompt 六段式框架，并按阶段调用 ecom-rules-fee、ecom-data-prep、ecom-selection-profit、ecom-video-creative、ecom-ads-plan、ecom-po-build、ecom-roi-review 等专项技能。涉及 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等多平台运营时，若用户在问「运营全链路怎么搭」「从选品到复盘跑一遍」「这套 Agent 工作流怎么落地」「团队 SOP 与 Prompt 模板怎么沉淀」，或一次提出跨阶段任务，用本技能做编排。
+description: 跨境电商多平台运营端到端工作流总控技能，负责阶段路由与人机协作编排：把「规则检索 → 表格整理 → 选品测算 → 视频素材 → 广告投流 → PO 单 → ROI 复盘」七个阶段串成一条流水线，另含线下门店手写单据台账支线，统一输出信封、风险分级、人机边界与 Prompt 六段式框架，并按阶段调用 ecom-rules-fee、ecom-data-prep、ecom-selection-profit、ecom-video-creative、ecom-ads-plan、ecom-po-build、ecom-roi-review、ecom-receipt-ledger 等专项技能。涉及 Amazon、Shopee、TikTok Shop、Temu、Lazada、Wayfair、美客多、独立站等多平台运营时，若用户在问「运营全链路怎么搭」「从选品到复盘跑一遍」「这套 Agent 工作流怎么落地」「团队 SOP 与 Prompt 模板怎么沉淀」，或一次提出跨阶段任务，用本技能做编排。
 metadata:
   short-description: 总控层 — 七阶段路由、人机协作编排、统一输出契约与 Prompt 工程方法
 ---
@@ -15,6 +15,7 @@ metadata:
 |---|---|---|---|
 | 1 规则信息搜集 | 多平台合规规则、费率、税务、政策、物流规范的结构化与检索 | [`ecom-rules-fee`](../ecom-rules-fee/) | `fee_check.py` |
 | 2 表格数据整理 | 表头归一、清洗去重、口径统一、结构化落表 | [`ecom-data-prep`](../ecom-data-prep/) | `clean_table.py` |
+| 2B 手写单据台账 | 手写采购/销售单据识别结构化、简写标准化、自动算账、日结与凭证回链 | [`ecom-receipt-ledger`](../ecom-receipt-ledger/) | `receipt_ledger.py` |
 | 3 选品利润测算 | 逐站点算售价、佣金、运费、关税与净利，反算保本价与目标售价 | [`ecom-selection-profit`](../ecom-selection-profit/) | `selection_profit.py` |
 | 4 视频素材生产 | 分镜、生成提示词、前三秒留存检查、任意语种本地化与语速预算 | [`ecom-video-creative`](../ecom-video-creative/) | `video_brief.py` |
 | 5 广告投放 | 投放结构、出价预算、放量节奏、止损判优 | [`ecom-ads-plan`](../ecom-ads-plan/) | 无脚本，出表格与清单 |
@@ -23,7 +24,7 @@ metadata:
 
 阶段边界与交接字段、串联顺序与并行关系见 [references/workflow-orchestration.md](references/workflow-orchestration.md)。
 
-**七个阶段技能需要各自安装**（每个都是自包含文件夹）。只装了本总控技能时，按上表的路径指引人工执行，或先安装对应阶段技能。
+**各阶段技能需要各自安装**（每个都是自包含文件夹）。②B 单据台账与 ① ② 并行，不参与主链路串联。只装了本总控技能时，按上表的路径指引人工执行，或先安装对应阶段技能。
 
 ## 任务分类与执行策略
 
@@ -32,6 +33,7 @@ metadata:
 | 检索类 | 规则、费率、公告、物流规范查询 | 全自动检索 + 强制引用来源 | 抽样复核 |
 | 生成类 | 素材分镜与生成提示词、投流脚本、SOP、周报 | 全自动生成 + 结构化输出 | 发布前确认 |
 | 流程类 | PO 单、工单、数据回写、表格交付 | 生成 + 校验 + 待办清单 | 提交与付款终审 |
+| 录入类 | 手写单据拍照识别、简写标准化、日结对账 | 识别 + 算账 + 差异标红 + 隔离 | 差异行回看原单、补映射表 |
 | 分析类 | 选品测算、ROI/ROAS/毛利核算、异常归因 | 核算 + 异常标记 + 归因链 | 高风险结论复核 |
 
 ## 不可违背的约束
@@ -49,7 +51,7 @@ metadata:
 
 ```json
 {
-  "task": "fee_check | clean_table | selection_profit | video_brief | po_build | roi_review",
+  "task": "fee_check | clean_table | selection_profit | video_brief | po_build | roi_review | receipt_ledger",
   "status": "ok | partial | blocked",
   "confidence": 0.0,
   "data": {},
