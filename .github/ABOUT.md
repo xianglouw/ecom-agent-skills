@@ -88,11 +88,20 @@ cross-border-ecommerce, ecommerce, ecommerce-automation, agent-skills, ai-agent,
 3. **Description** 粘贴第一节的推荐版（想吸引海外流量就用英文优先版）；**Website** 可留空
 4. 勾选 **Releases** / **Packages** 视需要，建议至少勾 **Releases**
 5. 同一个弹窗里的 **Topics** 粘贴第三节那一整行（GitHub 会自动按逗号拆成标签）
-6. 保存
+6. **Social preview** 上传仓库里的 `docs/social-preview.png`
+7. 保存
 
 ## 七、社交预览图（Social preview）
 
-同一个弹窗里有 **Social preview → Upload an image**，建议传一张 1280×640 的图（仓库名 + 八段流水线示意），分享到群、公众号或 Twitter 时会显示这张图而不是默认头像。没有图片时 GitHub 会退化显示仓库名的纯色卡片，不影响功能。
+同一个弹窗里有 **Social preview → Upload an image**，传仓库里现成的那张：
+
+```
+docs/social-preview.png
+```
+
+1280×640，202 KB（GitHub 上限 1 MB），深色卡片，内容是大白话标题「把重复的运营活交给 AI」+ 八个阶段色块 + 一行输出说明。分享到群、公众号或社交媒体时会显示这张图而不是默认头像；没有图片时 GitHub 会退化显示仓库名的纯色卡片，不影响功能。
+
+需要改文案时重跑生成脚本即可（图形由 Pillow 直接绘制，改字不用重排版）。
 
 ## 八、仓库文件索引（给来访者指路）
 
@@ -103,6 +112,8 @@ cross-border-ecommerce, ecommerce, ecommerce-automation, agent-skills, ai-agent,
 | 阶段边界、交接字段、卡点与回流的完整定义 | [skills/crossborder-ecom-ops/references/workflow-orchestration.md](../skills/crossborder-ecom-ops/references/workflow-orchestration.md) |
 | 六段式 Prompt 框架、把一次作业封装成可复用 Skill、Badcase 复盘 | [skills/crossborder-ecom-ops/references/prompt-contract.md](../skills/crossborder-ecom-ops/references/prompt-contract.md) |
 | 每个版本改了什么 | [CHANGELOG.md](../CHANGELOG.md) |
+| 最新版本的发布说明（可直接贴到 Release） | [docs/release-notes-v0.2.0.md](../docs/release-notes-v0.2.0.md) |
+| 仓库社交预览图 | [docs/social-preview.png](../docs/social-preview.png) |
 
 ## 九、曝光自查清单
 
