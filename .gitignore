@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 脚本演示输出（--out/--report 生成的中间结果）
+**/examples/out/
+
+# macOS
+.DS_Store

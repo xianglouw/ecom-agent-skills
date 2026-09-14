@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""阶段 2：多来源运营表格清洗与结构化。
+
+用法示例：
+  python3 clean_table.py raw.xlsx --out clean.csv --report clean.report.json \
+      --require sku,price --dedupe-on sku,date --quarantine bad_rows.csv
+
+做的事：表头别名归一、全角半角与空白清洗、金额/比例/日期标准化、空行剔除、
+按业务主键去重、必填字段校验并把不合格的行隔离输出。只写 --out/--report/--quarantine 指定文件。
+"""
+
+import argparse
+import os
+import sys
+
+import sheetio
+from sheetio import clean_text, norm_key, to_date, to_number
+
+NUMERIC_FIELDS = {
+    "price", "cost", "spend", "revenue", "total_revenue", "qty", "units", "orders",
+    "clicks", "impressions", "amount", "unit_price", "refund", "moq",
+    "lead_time_days", "price_min", "price_max",
+}
+RATE_FIELDS = {"commission_rate", "payment_rate", "tax_rate"}
+COUNT_FIELDS = {"qty", "units", "orders", "clicks", "impressions", "moq", "lead_time_days"}
+DATE_FIELDS = {"date", "effective_date", "updated_at", "expected_arrival"}
+
+
+def _format_value(field, value):
+    if field in DATE_FIELDS:
+        return to_date(value)
+    if field in RATE_FIELDS:
+        number = to_number(value)
+        if number is None:
+            return None
+        return f"{number:.6f}".rstrip("0").rstrip(".") or "0"
+    if field in NUMERIC_FIELDS:
+        number = to_number(value)
+        if number is None:
+            return None
+        if field in COUNT_FIELDS and float(number).is_integer():
+            return str(int(number))
+        return f"{number:.2f}"
+    text = clean_text(value)
+    return text
+
+
+def build_headers(headers, mapping, dedupe_required):
+    renamed = {}
+    output = []
+    used = set()
+    for header in headers:
+        key = norm_key(header)
+        if key in mapping:
+            target = mapping[key]
+        else:
+            target = sheetio.canonical_field(header)
+        if target in used:
+            suffix = 2
+            while f"{target}_{suffix}" in used:
+                suffix += 1
+            renamed[header] = f"{target}_{suffix}"
+            used.add(f"{target}_{suffix}")
+            output.append(f"{target}_{suffix}")
+            continue
+        used.add(target)
+        output.append(target)
+        if key != target:
+            renamed[header] = target
+    return output, renamed
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="清洗并结构化运营表格：表头归一、数值与日期标准化、去重、必填校验。",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("input", help="输入表格：.csv/.tsv/.xlsx")
+    parser.add_argument("--out", required=True, help="输出清洗后的 CSV（UTF-8 BOM）")
+    parser.add_argument("--report", default=None, help="输出清洗报告 JSON")
+    parser.add_argument("--quarantine", default=None, help="输出被隔离的问题行 CSV")
+    parser.add_argument("--map", action="append", default=[], metavar="原列名=标准字段",
+                        help="显式指定列名映射，可重复")
+    parser.add_argument("--require", default="", help="必填字段，逗号分隔，例如 sku,price")
+    parser.add_argument("--dedupe-on", default="", help="去重主键字段，逗号分隔，默认 sku,date（不存在则用全列）")
+    parser.add_argument("--keep", default="", help="只保留这些字段，逗号分隔；默认保留全部")
+    parser.add_argument("--sheet", type=int, default=1, help="xlsx 工作表序号，默认第 1 个")
+    parser.add_argument("--header-row", type=int, default=1, help="表头所在行号，默认 1")
+    parser.add_argument("--keep-empty-rows", action="store_true", help="保留全空行（默认剔除）")
+    args = parser.parse_args(argv)
+
+    try:
+        headers, rows = sheetio.read_table(args.input, sheet=args.sheet, header_row=args.header_row)
+    except (OSError, ValueError) as error:
+        sheetio.emit(sheetio.make_envelope("clean_table", "blocked", 0.0, {"error": str(error)},
+                                           [sheetio.flag("high", "input_error", str(error), "确认文件路径与格式")]))
+        return 2
+    if not headers:
+        sheetio.emit(sheetio.make_envelope("clean_table", "blocked", 0.0, {"error": "空表或未读到表头"},
+                                           [sheetio.flag("high", "empty_input", "未读到表头", "确认表头行号")]))
+        return 2
+
+    mapping = sheetio.apply_mapping(args.map)
+    new_headers, renamed = build_headers(headers, mapping, args.dedupe_on)
+    flags = []
+
+    required = [item.strip() for item in args.require.split(",") if item.strip()]
+    known = set(new_headers)
+    missing_required_columns = [name for name in required if norm_key(name) not in known]
+    for name in missing_required_columns:
+        flags.append(sheetio.flag("high", "missing_required_column",
+                                  f"必填字段 {name} 在表中不存在", "补齐该列或确认是否用 --map 指定了正确列名"))
+
+    records = []
+    coercions = {}
+    empty_dropped = 0
+    for offset, raw in enumerate(rows, start=args.header_row + 1):
+        values = {}
+        for index, field in enumerate(new_headers):
+            cell = raw[index] if index < len(raw) else ""
+            if not clean_text(cell) and cell != 0:
+                values[field] = None
+                continue
+            converted = _format_value(field, cell)
+            if converted is None:
+                coercions[field] = coercions.get(field, 0) + 1
+                values[field] = clean_text(cell)
+            else:
+                if field in NUMERIC_FIELDS | RATE_FIELDS | DATE_FIELDS and str(converted) != clean_text(cell):
+                    coercions[field] = coercions.get(field, 0) + 1
+                values[field] = converted
+        if not any(value not in (None, "") for value in values.values()):
+            empty_dropped += 1
+            if args.keep_empty_rows:
+                records.append((offset, values))
+            continue
+        records.append((offset, values))
+
+    dedupe_fields = [item.strip() for item in args.dedupe_on.split(",") if item.strip()]
+    if dedupe_fields and any(field not in known for field in dedupe_fields):
+        flags.append(sheetio.flag("medium", "dedupe_key_missing",
+                                  f"去重主键 {dedupe_fields} 有字段不存在，已改为整行去重",
+                                  "确认主键字段名后重跑"))
+        dedupe_fields = []
+    if not dedupe_fields:
+        dedupe_fields = [field for field in ("sku", "date") if field in known]
+
+    seen = set()
+    deduped = []
+    duplicates = []
+    for offset, values in records:
+        if dedupe_fields:
+            key = tuple(norm_key(values.get(field) or "") for field in dedupe_fields)
+        else:
+            key = tuple(norm_key(values.get(field) or "") for field in new_headers)
+        if key in seen:
+            duplicates.append(offset)
+            continue
+        seen.add(key)
+        deduped.append((offset, values))
+
+    clean_rows = []
+    quarantined = []
+    for offset, values in deduped:
+        missing = [name for name in required if not clean_text(values.get(norm_key(name)) or "")]
+        if missing:
+            quarantined.append((offset, values, "缺少必填字段：" + "、".join(missing)))
+            continue
+        clean_rows.append((offset, values))
+
+    if quarantined:
+        flags.append(sheetio.flag("medium", "rows_quarantined",
+                                  f"{len(quarantined)} 行因缺字段被隔离",
+                                  "把这些行退回数据源修正，确认是口径问题还是导出问题"))
+    if duplicates:
+        flags.append(sheetio.flag("low", "duplicates_removed",
+                                  f"按主键 {dedupe_fields or '全列'} 删除 {len(duplicates)} 行重复"))
+
+    keep = [item.strip() for item in args.keep.split(",") if item.strip()]
+    export_headers = [field for field in new_headers if not keep or field in keep]
+    sheetio.write_csv(args.out, export_headers, [[values.get(field) or "" for field in export_headers] for _, values in clean_rows])
+
+    if args.quarantine:
+        quarantine_headers = list(export_headers) + ["_隔离原因", "_原行号"]
+        sheetio.write_csv(args.quarantine, quarantine_headers,
+                          [[values.get(field) or "" for field in export_headers] + [reason, offset]
+                           for offset, values, reason in quarantined])
+
+    coverage = {
+        field: round(100.0 * sum(1 for _, values in clean_rows if clean_text(values.get(field) or "")) / len(clean_rows), 1)
+        for field in export_headers
+    } if clean_rows else {}
+
+    report = {
+        "input": os.path.abspath(args.input),
+        "rows_in": len(rows),
+        "rows_out": len(clean_rows),
+        "empty_rows_dropped": empty_dropped,
+        "duplicates_removed": len(duplicates),
+        "duplicate_row_numbers": duplicates[:50],
+        "quarantined": len(quarantined),
+        "quarantined_rows": [{"row": offset, "reason": reason} for offset, _, reason in quarantined[:50]],
+        "renamed_columns": renamed,
+        "output_columns": export_headers,
+        "coercion_counts": coercions,
+        "dedupe_key": dedupe_fields,
+        "required_fields": required,
+        "missing_required_columns": missing_required_columns,
+        "field_coverage_pct": coverage,
+    }
+    if args.report:
+        sheetio.write_json(args.report, report)
+
+    low_coverage = [field for field, pct in coverage.items() if pct < 60 and field in required]
+    for field in low_coverage:
+        flags.append(sheetio.flag("medium", "low_field_coverage",
+                                  f"{field} 仅 {coverage[field]}% 的行有值", "确认该字段在该数据源是否本来就缺"))
+
+    status = "blocked" if missing_required_columns else ("partial" if quarantined else "ok")
+    confidence = 0.9 if not quarantined and not missing_required_columns else 0.6
+    envelope = sheetio.make_envelope("clean_table", status, confidence, report, flags,
+                                     sources=[{"ref": os.path.basename(args.input), "as_of": sheetio.to_date(
+                                         __import__("datetime").datetime.now())}],
+                                     assumptions=["数值列已去掉货币符号与千分位；日期统一 YYYY-MM-DD",
+                                                  "重复行保留首次出现的记录"])
+    sheetio.emit(envelope)
+    sys.stderr.write(
+        f"[clean_table] 读入 {len(rows)} 行 → 输出 {len(clean_rows)} 行；"
+        f"去重 {len(duplicates)} 行，隔离 {len(quarantined)} 行，空行 {empty_dropped} 行\n"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

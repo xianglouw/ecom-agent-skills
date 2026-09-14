@@ -1,0 +1,7 @@
+sku,platform,site,category,price,qty,cost,currency
+A-001,Amazon,US,家居,99,1,35,USD
+A-002,Amazon,US,家居,180,2,40,USD
+A-003,Amazon,DE,户外,59,1,52,EUR
+A-004,Shopee,SG,家居,128,1,52,SGD
+A-005,Temu,US,家居,79,1,28,USD
+A-006,Shopee,SG,家居,128,1,200,SGD
