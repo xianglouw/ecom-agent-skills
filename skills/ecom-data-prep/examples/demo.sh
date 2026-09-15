@@ -7,6 +7,17 @@ mkdir -p out
 S=../scripts
 PY=${PYTHON:-python3}
 
+# 先自检解释器：否则报错只有一句「command not found」，看不出问题在哪
+if ! command -v "$PY" >/dev/null 2>&1; then
+  echo "找不到 python3，演示跑不起来。" >&2
+  echo "装一个 Python 3.8 或更高版本；装了但不在 PATH 里就指定：PYTHON=/你的/python3 ./demo.sh" >&2
+  exit 1
+fi
+if ! "$PY" -c 'import sys; raise SystemExit(sys.version_info < (3, 8))' 2>/dev/null; then
+  echo "$("$PY" --version 2>&1) 版本太低，本技能需要 Python 3.8 或更高。" >&2
+  exit 1
+fi
+
 "$PY" "$S/clean_table.py" ad_raw.csv \
   --require sku,date,spend --dedupe-on sku,date \
   --out out/clean.csv --quarantine out/bad_rows.csv --out-xlsx out/clean.xlsx --out-json out/clean.json > /dev/null

@@ -7,6 +7,17 @@ mkdir -p out
 S=../scripts
 PY=${PYTHON:-python3}
 
+# 先自检解释器：否则报错只有一句「command not found」，看不出问题在哪
+if ! command -v "$PY" >/dev/null 2>&1; then
+  echo "找不到 python3，演示跑不起来。" >&2
+  echo "装一个 Python 3.8 或更高版本；装了但不在 PATH 里就指定：PYTHON=/你的/python3 ./demo.sh" >&2
+  exit 1
+fi
+if ! "$PY" -c 'import sys; raise SystemExit(sys.version_info < (3, 8))' 2>/dev/null; then
+  echo "$("$PY" --version 2>&1) 版本太低，本技能需要 Python 3.8 或更高。" >&2
+  exit 1
+fi
+
 echo "== 场景一：一天的账，从 8 张手写单据照片到日结台账 =="
 "$PY" "$S/receipt_ledger.py" receipts_raw.csv --alias alias_map.csv \
   --price-ref price_ref.csv \

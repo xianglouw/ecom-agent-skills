@@ -105,17 +105,27 @@ python3 scripts/selection_profit.py items.csv --freight freight.csv \
 
 ## 快速体验
 
-每个技能自带示例数据和演示脚本，进对应目录跑一次即可（示例里刻意埋了脏数据，所以异常检测路径都会真实触发）：
+七个技能各带一份示例数据和演示脚本，一条命令就能跑完全部（示例里**刻意埋了脏数据**，所以异常检测路径都会真实触发，不是走个过场）：
 
 ```bash
-cd ecom-agent-skills/skills/ecom-rules-fee/examples     && ./demo.sh   # 费率核算与扣费风险
-cd ecom-agent-skills/skills/ecom-data-prep/examples     && ./demo.sh   # 表格清洗与隔离
-cd ecom-agent-skills/skills/ecom-receipt-ledger/examples && ./demo.sh  # 手写单据日结与凭证回链
-cd ecom-agent-skills/skills/ecom-selection-profit/examples && ./demo.sh # 选品利润测算
-cd ecom-agent-skills/skills/ecom-video-creative/examples   && ./demo.sh # 素材分镜与前三秒检查
-cd ecom-agent-skills/skills/ecom-po-build/examples      && ./demo.sh   # PO 单生成与校验
-cd ecom-agent-skills/skills/ecom-roi-review/examples    && ./demo.sh   # ROI 复盘
+# 先进入仓库根目录（克隆下来的 ecom-agent-skills 文件夹）
+cd ecom-agent-skills
+
+# 一次跑完全部七个（推荐先跑这个）
+bash demo-all.sh
+
+# 或者只跑某一个——都在仓库根目录执行，不用先 cd 进子目录
+bash skills/ecom-rules-fee/examples/demo.sh        # 费率核算与扣费风险
+bash skills/ecom-data-prep/examples/demo.sh        # 表格清洗与隔离
+bash skills/ecom-receipt-ledger/examples/demo.sh   # 手写单据日结与凭证回链
+bash skills/ecom-selection-profit/examples/demo.sh # 选品利润测算
+bash skills/ecom-video-creative/examples/demo.sh   # 素材分镜与前三秒检查
+bash skills/ecom-po-build/examples/demo.sh         # PO 单生成与校验
+bash skills/ecom-roi-review/examples/demo.sh       # ROI 复盘
 ```
+
+每个演示脚本都会自己切到所在目录，所以**从仓库根目录直接执行就行**，跑完也不会改变你当前的目录。
+`ecom-ads-plan` 与 `crossborder-ecom-ops` 是纯规则与编排技能，没有演示脚本。
 
 产物统一写到各自的 `examples/out/`，都是能直接打开的表格（CSV 是 UTF-8 BOM，中文不乱码）和 Excel 工作簿。
 
@@ -153,6 +163,7 @@ ecom-agent-skills/
 ├── README.md
 ├── LICENSE
 ├── CHANGELOG.md
+├── demo-all.sh                     一键跑完七个技能的演示
 ├── docs/
 │   └── run-chain.md                技能运行链路：入口判断、链路全景、逐段卡片与真实跑法
 └── skills/
@@ -222,7 +233,7 @@ A collection of agent skills for cross-border e-commerce operations, split by wo
 ```bash
 git clone https://github.com/xianglouw/ecom-agent-skills.git
 cp -r ecom-agent-skills/skills/* ~/.codex/skills/
-cd ecom-agent-skills/skills/ecom-selection-profit/examples && ./demo.sh
+cd ecom-agent-skills && bash demo-all.sh
 ```
 
 Every script that produces a table also writes a multi-sheet `.xlsx` workbook via `--out-xlsx` (bold frozen header, auto column widths, numbers stored as numbers). Reading `.xlsx` is supported too. Requires Python 3.8+, no third-party packages. MIT licensed.

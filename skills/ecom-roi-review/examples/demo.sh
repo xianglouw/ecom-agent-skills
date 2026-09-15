@@ -7,6 +7,17 @@ mkdir -p out
 S=../scripts
 PY=${PYTHON:-python3}
 
+# 先自检解释器：否则报错只有一句「command not found」，看不出问题在哪
+if ! command -v "$PY" >/dev/null 2>&1; then
+  echo "找不到 python3，演示跑不起来。" >&2
+  echo "装一个 Python 3.8 或更高版本；装了但不在 PATH 里就指定：PYTHON=/你的/python3 ./demo.sh" >&2
+  exit 1
+fi
+if ! "$PY" -c 'import sys; raise SystemExit(sys.version_info < (3, 8))' 2>/dev/null; then
+  echo "$("$PY" --version 2>&1) 版本太低，本技能需要 Python 3.8 或更高。" >&2
+  exit 1
+fi
+
 "$PY" "$S/roi_review.py" roi_current.csv --group-by campaign --compare roi_prev.csv \
   --gross-margin 0.35 --threshold 0.2 \
   --out out/review.csv --out-md out/review.md --out-xlsx out/review.xlsx --out-json out/review.json > /dev/null
