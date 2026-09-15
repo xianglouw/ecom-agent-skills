@@ -31,7 +31,7 @@
 | `ecom-rules-fee` | 规则费率 — 多平台合规费率检索、对照表搭建、逐单费用与扣费风险核算 |
 | `ecom-data-prep` | 数据制表 — 多来源表头归一、清洗去重、口径统一，产出能直接分析的干净表 |
 | `ecom-selection-profit` | 选品测算 — 多站点多币种逐行净利、保本价与目标售价反算，标记亏损组合 |
-| `ecom-video-creative` | 视频生成 — 分镜、文生视频提示词、前三秒留存检查、任意语种本地化与语速预算；提示词可直连 12 家视频生成大模型接口出真实镜头片段 |
+| `ecom-video-creative` | 视频生成 — 先定素材形态（实拍口播 / 数字人 / AI 生成 / 混剪 / 素材库 / 图文），再按周期采样爆款前 3 秒台词提炼套路与热词、产出钩子候选，然后出分镜、文生视频提示词、前三秒留存检查、任意语种本地化与语速预算；提示词可直连 12 家视频生成大模型接口出真实镜头片段 |
 | `ecom-ads-plan` | 广告投放 — 投放结构、出价预算、保本 ROAS、放量节奏与止损判优规则 |
 | `ecom-receipt-ledger` | 单据台账 — 手写采购/销售单据拍照进账：潦草字迹加固识别、简写标准化、历史价格库核对、自动算账与采销日结，认不准的进补拍清单、凭证照片回链 |
 | `ecom-po-build` | PO 单制作 — 采购订单生成与下单前校验：金额、MOQ、单位、币种、交期与审批阈值 |
@@ -46,7 +46,7 @@
 | 数据底座 | ② 表格数据整理 | `ecom-data-prep` | 干净结构化表、字段覆盖率、隔离行与清洗台账 |
 | 数据底座 | ②B 手写单据台账 | `ecom-receipt-ledger` | 电子化采购/销售台账、日结与月结、算账差异清单、补拍清单与价格核对表、凭证照片回链 |
 | 决策层 | ③ 选品利润测算 | `ecom-selection-profit` | 逐行测算明细、站点汇总、保本价与目标售价 |
-| 增长层 | ④ 视频素材生产 | `ecom-video-creative` | 分镜脚本、生成提示词、前三秒检查、多语种语速预算；可选直连出片（成片文件 + 生成台账） |
+| 增长层 | ④ 视频素材生产 | `ecom-video-creative` | 素材形态判定与合规红线、周期热词与黄金三秒套路排行、钩子候选、分镜脚本、生成提示词、前三秒检查、多语种语速预算；可选直连出片（成片文件 + 生成台账） |
 | 增长层 | ⑤ 广告投放 | `ecom-ads-plan` | 投放结构表、出价预算表、止损判优阈值表 |
 | 履约层 | ⑥ PO 单制作 | `ecom-po-build` | PO 单、校验报告、待人工确认清单 |
 | 复盘层 | ⑦ ROI 数据复盘 | `ecom-roi-review` | 分组复盘表、环比变化、归因链与下周动作 |
@@ -214,7 +214,7 @@ A collection of agent skills for cross-border e-commerce operations, split by wo
 | `ecom-data-prep` | Data prep — header normalization, dedup, validation, quarantine, clean structured tables |
 | `ecom-receipt-ledger` | Receipt ledger — handwritten receipt capture into structured rows, alias normalization, auto-reconciliation, daily purchase/sale close with photo evidence |
 | `ecom-selection-profit` | Selection & pricing — per-site, multi-currency profit modeling, breakeven and target price |
-| `ecom-video-creative` | Video creative — storyboards, text-to-video prompts, first-3-second retention checks, any target language; prompts can be sent straight to 12 video-generation APIs (Seedance, Wan, Kling, MiniMax, Veo, Sora, Runway, Luma, Replicate, fal) |
+| `ecom-video-creative` | Video creative — picks the creative form first (live-action, digital human, AI-generated, mixing, stock-footage edit, image post), mines the period's winning 3-second openers and hot words from sampled viral clips, then produces storyboards, text-to-video prompts, first-3-second retention checks in any target language; prompts can be sent straight to 12 video-generation APIs (Seedance, Wan, Kling, MiniMax, Veo, Sora, Runway, Luma, Replicate, fal) |
 | `ecom-ads-plan` | Ads planning — campaign structure, bids and budgets, breakeven ROAS, scale-up and stop-loss rules |
 | `ecom-po-build` | Purchase orders — PO generation plus pre-order validation (amount, MOQ, unit, currency, lead time) |
 | `ecom-roi-review` | ROI review — ROAS/ACOS/TACOS, period-over-period deltas, attribution and weekly review |

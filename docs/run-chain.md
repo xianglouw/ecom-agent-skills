@@ -113,30 +113,38 @@ flowchart LR
 
 ### ④ 视频素材 · `ecom-video-creative`
 
-- **触发**：产品要出广告脚本、要文生视频/图生视频提示词、要本地化到目标语种、要把提示词接到视频生成接口出片。
-- **输入**：商品表 + 市场风格库（`--styles`）+ 钩子库（`--hooks`）+ 禁用词表（`--banned`）。
+- **触发**：产品要出广告脚本、要文生视频/图生视频提示词、要本地化到目标语种、要把提示词接到视频生成接口出片；也包括「这个品该做哪种素材」「最近什么样的开场容易火」。
+- **输入**：商品表 + 市场风格库（`--styles`）+ 钩子库（`--hooks`）+ 禁用词表（`--banned`）；跑周期热词时另加爆款采样表（平台 / 站点 / 语种 / 类目 / 前 3 秒台词 / 表现数据 / 采集日期）。
+- **第零步 · 定形态**：按 `references/creative-stack.md` 的判定顺序在实拍口播 / 数字人 / AI 生成镜头 / 混剪 / 素材库剪辑 / 图文之间选一种（形态决定成本、周期与能上的平台），并确认该形态的合规红线（数字人标注、声音克隆授权、换脸默认不做）。
 - **命令**：
   ```bash
+  # 第一步：采样本周期爆款的前 3 秒台词，提炼套路与热词（建议每两周或换品类时跑一次）
+  python3 scripts/hot_hooks.py viral_samples.csv --hooks hook_patterns.csv --products products.csv \
+    --top 3 --out hot_words.csv --out-xlsx hot_hooks.xlsx --out-md hot_hooks.md \
+    --out-json hot_hooks.json --quarantine hot_hooks_issues.csv
+
+  # 第二步：出分镜与生成提示词
   python3 scripts/video_brief.py products.csv --styles market_styles.csv --hooks hook_patterns.csv \
     --banned banned_words.csv --duration 15 --ratio 9:16,16:9 --hooks-per-sku 2 --speech-rate vi=3.5 \
     --out storyboard.csv --out-md brief.md --out-xlsx brief.xlsx --out-json brief.json
 
-  # 可选：把分镜里的提示词接到视频生成平台出真实镜头片段（换平台只改 --provider）
+  # 第三步（可选）：把分镜里的提示词接到视频生成平台出真实镜头片段（换平台只改 --provider）
   python3 scripts/video_render.py --list-providers
   python3 scripts/video_render.py storyboard.csv --provider ark --check
   python3 scripts/video_render.py storyboard.csv --provider ark --max-clips 8 --confirm \
     --outdir renders --out renders.csv --out-xlsx renders.xlsx --out-json renders.json
   ```
 - **产物**：素材总表 / 分镜 / 语速预算 / 问题清单（前三秒留存逐条检查）。
+- **周期热词产物**（可选）：套路排行 / 热词表 / 台词归类 / 钩子候选（四张工作表）+ 未归类台词清单。
 - **生成侧产物**（可选）：成片文件（`--outdir`）、生成台账（任务 ID、提交与完成时间、耗时、失败原因）、未生成清单。
 - **交接给下游**：素材编号 `{SKU}_{站点}_{钩子}_{比例}_{时长}_v{n}`、钩子编码、目标语种、前三秒判定结果。
-- **人工卡点**：命中禁用词、认证标签缺失——出整改建议，人确认后再投。**调视频生成接口按条计费，用哪家模型、跑多少条由人决定；脚本默认试跑，不加 `--confirm` 不发出任何请求。**
+- **人工卡点**：命中禁用词、认证标签缺失——出整改建议，人确认后再投；采样里没归类的台词要人工归一次；数字人与换脸的授权 / 平台标注没落实，素材不进投放队列。**调视频生成接口按条计费，用哪家模型、跑多少条由人决定；脚本默认试跑，不加 `--confirm` 不发出任何请求。**
 
 ### ⑤ 广告投放 · `ecom-ads-plan`
 
 - **触发**：素材要上线、要定预算出价、要定放量与关停规则。
 - **输入**：④ 的素材编号 + 保本 ROAS（来自 ③）+ 预算与目标。
-- **产物**：投放结构表（campaign / ad group / ad 三级命名）、出价与预算表、止损判优阈值表、A/B 轮次表（技能不出脚本，出表与清单）。
+- **产物**：投放结构表（campaign / ad group / ad 三级命名）、出价与预算表、止损判优阈值表、素材变量设计表（钩子 / 卖点顺序 / CTA / 形态 / 比例各测哪个指标、跑到多少转化才判优劣）、A/B 轮次表（技能不出脚本，出表与清单）。
 - **交接给下游**：命名规范、保本 ROAS、止损阈值、观察窗定义。
 - **人工卡点**：改预算、改出价、开新计划——AI 只出方案，人在后台执行。
 
