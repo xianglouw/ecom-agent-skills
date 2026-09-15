@@ -113,8 +113,11 @@ python3 scripts/selection_profit.py items.csv --freight freight.csv \
 # 先进入仓库根目录（克隆下来的 ecom-agent-skills 文件夹，不是里面的 skills/）
 cd ecom-agent-skills
 
-# 一次跑完全部七个（推荐先跑这个）
+# 一次跑完全部七个（推荐先跑这个）——逐个显示每个技能的运行过程
 bash demo-all.sh
+
+# 嫌输出太长只想看结果，加 -q
+bash demo-all.sh -q
 
 # 或者只跑某一个——都在仓库根目录执行，不用先 cd 进子目录
 bash skills/ecom-rules-fee/examples/demo.sh        # 费率核算与扣费风险
@@ -126,7 +129,7 @@ bash skills/ecom-po-build/examples/demo.sh         # PO 单生成与校验
 bash skills/ecom-roi-review/examples/demo.sh       # ROI 复盘
 ```
 
-`demo-all.sh` **放仓库根目录、或放技能所在的那一层（`ecom-rules-fee` 这些的同级）都能跑**，它会自己认路径；两种位置都认不出时会明确告诉你脚本该放哪儿。演示脚本自己会切到所在目录，所以**从仓库根目录直接执行即可，跑完也不会改变你当前的目录**。
+`demo-all.sh` **放仓库根目录、或放技能所在的那一层（`ecom-rules-fee` 这些的同级）都能跑**，它会自己认路径；两种位置都认不出时会明确告诉你脚本该放哪儿。演示脚本自己会切到所在目录，所以**从仓库根目录直接执行即可，跑完也不会改变你当前的目录**。中途有技能失败不会中断，跑完会列出哪几个没过；有失败时命令返回非零，脚本里可以直接判断。
 
 `ecom-ads-plan` 与 `crossborder-ecom-ops` 是纯规则与编排技能，没有演示脚本。
 
