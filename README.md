@@ -107,8 +107,10 @@ python3 scripts/selection_profit.py items.csv --freight freight.csv \
 
 七个技能各带一份示例数据和演示脚本，一条命令就能跑完全部（示例里**刻意埋了脏数据**，所以异常检测路径都会真实触发，不是走个过场）：
 
+**先认清目录**：九个技能都在仓库的 `skills/` 文件夹里；仓库根目录是它的**上一层**，只放 README、`demo-all.sh` 这些公共文件。
+
 ```bash
-# 先进入仓库根目录（克隆下来的 ecom-agent-skills 文件夹）
+# 先进入仓库根目录（克隆下来的 ecom-agent-skills 文件夹，不是里面的 skills/）
 cd ecom-agent-skills
 
 # 一次跑完全部七个（推荐先跑这个）
@@ -124,7 +126,8 @@ bash skills/ecom-po-build/examples/demo.sh         # PO 单生成与校验
 bash skills/ecom-roi-review/examples/demo.sh       # ROI 复盘
 ```
 
-每个演示脚本都会自己切到所在目录，所以**从仓库根目录直接执行就行**，跑完也不会改变你当前的目录。
+`demo-all.sh` **放仓库根目录、或放技能所在的那一层（`ecom-rules-fee` 这些的同级）都能跑**，它会自己认路径；两种位置都认不出时会明确告诉你脚本该放哪儿。演示脚本自己会切到所在目录，所以**从仓库根目录直接执行即可，跑完也不会改变你当前的目录**。
+
 `ecom-ads-plan` 与 `crossborder-ecom-ops` 是纯规则与编排技能，没有演示脚本。
 
 产物统一写到各自的 `examples/out/`，都是能直接打开的表格（CSV 是 UTF-8 BOM，中文不乱码）和 Excel 工作簿。
