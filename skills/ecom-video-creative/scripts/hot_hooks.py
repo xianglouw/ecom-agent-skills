@@ -52,6 +52,9 @@ SAMPLE_ALIASES = {
 
 REQUIRED_FIELDS = ["line"]
 
+# 给团队填的空白模板表头，顺序就是推荐的填法；--template 按这份写出去，改字段时只改这一处
+TEMPLATE_HEADERS = ["平台", "站点", "语种", "类目", "前3秒台词", "播放量", "销量", "点赞", "作品", "采集日期"]
+
 DETAIL_HEADERS = ["序号", "平台", "站点", "语种", "类目", "前3秒台词", "主套路", "套路类型",
                   "命中线索", "兼中套路", "播放量", "销量", "点赞", "作品", "采集日期"]
 WORD_HEADERS = ["词", "类别", "出现次数", "覆盖作品数", "来源类型", "示例台词"]
@@ -855,7 +858,9 @@ def parse_map(items):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="周期热词与黄金三秒套路挖掘：采样爆款前 3 秒台词 → 套路归类 → 热词统计 → 钩子候选")
-    parser.add_argument("input", nargs="+", help="采样表：.csv/.xlsx，字段见脚本头部说明")
+    parser.add_argument("input", nargs="*", help="采样表：.csv/.xlsx，字段见脚本头部说明")
+    parser.add_argument("--template", metavar="模板路径",
+                        help="写出一份空白采样模板（CSV，Excel 打开中文不乱码）后直接退出，不跑统计")
     parser.add_argument("--hooks", action="append", default=[], metavar="钩子库",
                         help="钩子模板库（可多次传），用来给套路补首帧要求与口播/字幕模板")
     parser.add_argument("--products", action="append", default=[], metavar="产品表",
@@ -875,6 +880,18 @@ def main(argv=None):
 
     sheet = args.sheet if args.sheet in (None, "") or not str(args.sheet).isdigit() else int(args.sheet)
     mapping = parse_map(args.map)
+
+    if args.template:
+        sheetio.write_csv(args.template, TEMPLATE_HEADERS, [])
+        print("已写出采样模板：%s" % args.template)
+        print("  按 references/hook-sampling.md 的口径填：同平台、同站点、同类目、近 14 天，"
+              "每个组合采 30 条以上")
+        print("  填完这样跑：python3 %s 填好的表.csv --hooks hook_patterns.csv --products products.csv"
+              % os.path.basename(__file__))
+        return 0
+
+    if not args.input:
+        parser.error("要跑统计就得给采样表；只想拿空白模板请用 --template 模板路径")
 
     rows, headers, columns, flags = load_samples(args.input, sheet=sheet, header_row=args.header_row,
                                                  mapping=mapping)
